@@ -22,6 +22,8 @@
 
   * Add `MonadIO Q` instance
 
+  * Add support for `deriving via` TODO
+
 ## 2.12.0.0 *July 2017*
 
   * Bundled with GHC 8.2.1
