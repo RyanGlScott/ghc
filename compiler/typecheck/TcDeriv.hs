@@ -40,7 +40,6 @@ import RnSource   ( addTcgDUs )
 import Avail
 
 import Unify( tcUnifyTy )
-import BasicTypes ( DerivStrategy(..) )
 import Class
 import Type
 import ErrUtils
@@ -584,7 +583,8 @@ same set of clause-derived classes.
 
 ------------------------------------------------------------------
 -- | Process a single class in a `deriving` clause.
-deriveClause :: TyCon -> Maybe DerivStrategy -> LHsSigType GhcRn -> SDoc
+deriveClause :: TyCon -> Maybe (DerivStrategy GhcRn)
+             -> LHsSigType GhcRn -> SDoc
              -> TcM (Maybe EarlyDerivSpec)
 deriveClause rep_tc mb_strat pred err_ctxt
   = addErrCtxt err_ctxt $
@@ -705,8 +705,8 @@ warnUselessTypeable
 ------------------------------------------------------------------
 deriveTyData :: [TyVar] -> TyCon -> [Type]   -- LHS of data or data instance
                                              --   Can be a data instance, hence [Type] args
-             -> Maybe DerivStrategy          -- The optional deriving strategy
-             -> LHsSigType GhcRn           -- The deriving predicate
+             -> Maybe (DerivStrategy GhcRn)  -- The optional deriving strategy
+             -> LHsSigType GhcRn             -- The deriving predicate
              -> TcM (Maybe EarlyDerivSpec)
 -- The deriving clause of a data or newtype declaration
 -- I.e. not standalone deriving
@@ -993,7 +993,7 @@ mkEqnHelp :: Maybe OverlapMode
                -- SupplyContext => context supplied (standalone deriving)
                -- InferContext  => context inferred (deriving on data decl, or
                --                  standalone deriving decl with a wildcard)
-          -> Maybe DerivStrategy
+          -> Maybe (DerivStrategy GhcRn)
           -> TcRn EarlyDerivSpec
 -- Make the EarlyDerivSpec for an instance
 --      forall tvs. theta => cls (tys ++ [ty])
@@ -1108,6 +1108,7 @@ mkDataTypeEqn
          Just NewtypeStrategy  -> bale_out gndNonNewtypeErr
          -- Lacking a user-requested deriving strategy, we will try to pick
          -- between the stock or anyclass strategies
+         Just (ViaStrategy t)  -> pprPanic "TODO" (ppr t)
          Nothing -> mk_eqn_no_mechanism mk_data_eqn bale_out
 
 mk_data_eqn :: DerivSpecMechanism -- How GHC should proceed attempting to
@@ -1426,6 +1427,7 @@ mkNewTypeEqn
              then go_for_it_gnd
              else bale_out (cant_derive_err $$
                             if newtype_deriving then empty else suggest_gnd)
+         Just (ViaStrategy t) -> pprPanic "TODO" (ppr t)
          Nothing
            | might_derive_via_coercible
              && ((newtype_deriving && not deriveAnyClass)
@@ -1822,6 +1824,9 @@ genDerivStuff mechanism loc clas tycon inst_tys tyvars
                -- family default instances.
                -- See Note [DeriveAnyClass and default family instances]
                , [] )
+
+      -- TODO: Documentation
+      DerivSpecVia t -> pprPanic "TODO" (ppr t)
   where
     unusedConName :: Maybe Name
     unusedConName
@@ -1990,7 +1995,7 @@ derivingEtaErr cls cls_tys inst_ty
                 <+> pprClassPred cls (cls_tys ++ [inst_ty]))]
 
 derivingThingErr :: Bool -> Class -> [Type] -> Type
-                 -> Maybe DerivStrategy -> MsgDoc -> MsgDoc
+                 -> Maybe (DerivStrategy GhcRn) -> MsgDoc -> MsgDoc
 derivingThingErr newtype_deriving cls cls_tys inst_ty mb_strat why
   = derivingThingErr' newtype_deriving cls cls_tys inst_ty mb_strat
                       (maybe empty ppr mb_strat) why
@@ -2016,7 +2021,7 @@ derivingThingErrMechanism mechanism why
                 (mkTyConApp tc tc_args) mb_strat (ppr mechanism) why
 
 derivingThingErr' :: Bool -> Class -> [Type] -> Type
-                  -> Maybe DerivStrategy -> MsgDoc -> MsgDoc -> MsgDoc
+                  -> Maybe (DerivStrategy GhcRn) -> MsgDoc -> MsgDoc -> MsgDoc
 derivingThingErr' newtype_deriving cls cls_tys inst_ty mb_strat strat_msg why
   = sep [(hang (text "Can't make a derived instance of")
              2 (quotes (ppr pred) <+> via_mechanism)

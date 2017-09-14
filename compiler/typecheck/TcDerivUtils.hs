@@ -11,7 +11,8 @@ Error-checking and other utilities for @deriving@ clauses or declarations.
 module TcDerivUtils (
         DerivM, DerivEnv(..),
         DerivSpec(..), pprDerivSpec, DerivSpecMechanism(..),
-        isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass,
+        isDerivSpecStock, isDerivSpecNewtype,
+        isDerivSpecAnyClass, isDerivSpecVia,
         DerivContext(..), DerivStatus(..),
         isStandaloneDeriv, isStandaloneWildcardDeriv, mkDerivOrigin,
         PredOrigin(..), ThetaOrigin(..), mkPredOrigin,
@@ -114,7 +115,7 @@ data DerivEnv = DerivEnv
     --   'InferContext' for @deriving@ clauses, or for standalone deriving that
     --   uses a wildcard constraint.
     --   See @Note [Inferring the instance context]@.
-  , denv_strat        :: Maybe DerivStrategy
+  , denv_strat        :: Maybe (DerivStrategy GhcRn)
     -- ^ 'Just' if user requests a particular deriving strategy.
     --   Otherwise, 'Nothing'.
   }
@@ -224,7 +225,10 @@ data DerivSpecMechanism
 
   | DerivSpecAnyClass -- -XDeriveAnyClass
 
-isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass
+  | DerivSpecVia -- deriving via TODO Documentation
+      Type
+
+isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia
   :: DerivSpecMechanism -> Bool
 isDerivSpecStock (DerivSpecStock{}) = True
 isDerivSpecStock _                  = False
@@ -232,17 +236,17 @@ isDerivSpecStock _                  = False
 isDerivSpecNewtype (DerivSpecNewtype{}) = True
 isDerivSpecNewtype _                    = False
 
-isDerivSpecAnyClass (DerivSpecAnyClass{}) = True
-isDerivSpecAnyClass _                     = False
+isDerivSpecAnyClass DerivSpecAnyClass = True
+isDerivSpecAnyClass _                 = False
 
--- A DerivSpecMechanism can be losslessly converted to a DerivStrategy.
-mechanismToStrategy :: DerivSpecMechanism -> DerivStrategy
-mechanismToStrategy (DerivSpecStock{})    = StockStrategy
-mechanismToStrategy (DerivSpecNewtype{})  = NewtypeStrategy
-mechanismToStrategy (DerivSpecAnyClass{}) = AnyclassStrategy
+isDerivSpecVia (DerivSpecVia{}) = True
+isDerivSpecVia _                = False
 
 instance Outputable DerivSpecMechanism where
-  ppr = ppr . mechanismToStrategy
+  ppr (DerivSpecStock{})   = text "DerivSpecStock"
+  ppr (DerivSpecNewtype t) = text "DerivSpecNewtype" <> dcolon <+> ppr t
+  ppr DerivSpecAnyClass    = text "DerivSpecAnyClass"
+  ppr (DerivSpecVia t)     = text "DerivSpecVia" <> dcolon <+> ppr t
 
 -- | Whether GHC is processing a @deriving@ clause or a standalone deriving
 -- declaration.
