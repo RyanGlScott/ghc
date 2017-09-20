@@ -115,7 +115,7 @@ data DerivEnv = DerivEnv
     --   'InferContext' for @deriving@ clauses, or for standalone deriving that
     --   uses a wildcard constraint.
     --   See @Note [Inferring the instance context]@.
-  , denv_strat        :: Maybe (DerivStrategy GhcRn)
+  , denv_strat        :: Maybe DerivStrategyPostTc
     -- ^ 'Just' if user requests a particular deriving strategy.
     --   Otherwise, 'Nothing'.
   }
