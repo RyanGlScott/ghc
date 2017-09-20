@@ -46,7 +46,8 @@ module HsDecls (
   -- ** Standalone deriving declarations
   DerivDecl(..), LDerivDecl,
   -- ** Deriving strategies
-  DerivStrategy(..), LDerivStrategy,
+  DerivStrategy'(..), LDerivStrategy, DerivStrategy,
+  LDerivStrategyPostTc, DerivStrategyPostTc,
   -- ** @RULE@ declarations
   LRuleDecls,RuleDecls(..),RuleDecl(..), LRuleDecl, RuleBndr(..),LRuleBndr,
   collectRuleBndrSigTys,
@@ -111,6 +112,7 @@ import Class
 import Outputable
 import Util
 import SrcLoc
+import Type
 
 import Bag
 import Maybes
@@ -1692,9 +1694,16 @@ instance (SourceTextX pass, OutputableBndrId pass)
 
 -- | A 'Located' 'DerivStrategy'.
 type LDerivStrategy pass = Located (DerivStrategy pass)
+-- | A `DerivStrategy'`, pre-typechecking.
+type DerivStrategy pass = DerivStrategy' (LHsType pass)
+
+-- | A 'Located' 'DerivStrategyPostTc'.
+type LDerivStrategyPostTc = Located DerivStrategyPostTc
+-- | A `DerivStrategy'`, post-typechecking.
+type DerivStrategyPostTc = DerivStrategy' Type
 
 -- | Which technique the user explicitly requested when deriving an instance.
-data DerivStrategy pass
+data DerivStrategy' a
   -- See Note [Deriving strategies] in TcDeriv
   = StockStrategy    -- ^ GHC's \"standard\" strategy, which is to implement a
                      --   custom instance for the data type. This only works
@@ -1703,12 +1712,11 @@ data DerivStrategy pass
                      --   etc.)
   | AnyclassStrategy -- ^ @-XDeriveAnyClass@
   | NewtypeStrategy  -- ^ @-XGeneralizedNewtypeDeriving@
-  | ViaStrategy (LHsType pass) -- ^ @deriving via@
-                               -- TODO: More documentation
-deriving instance DataId pass => Data (DerivStrategy pass)
+  | ViaStrategy a -- ^ @deriving via@
+                  -- TODO: More documentation
+  deriving (Eq, Data)
 
-instance (SourceTextX pass, OutputableBndrId pass)
-      => Outputable (DerivStrategy pass) where
+instance Outputable a => Outputable (DerivStrategy' a) where
     ppr StockStrategy    = text "stock"
     ppr AnyclassStrategy = text "anyclass"
     ppr NewtypeStrategy  = text "newtype"
