@@ -201,6 +201,7 @@ pprExp i (StaticE e) = parensIf (i >= appPrec) $
                          text "static"<+> pprExp appPrec e
 pprExp _ (UnboundVarE v) = pprName' Applied v
 pprExp _ (LabelE s) = text "#" <> text s
+pprExp i (WithExtsE _ e) = pprExp i e
 
 pprFields :: [(Name,Exp)] -> Doc
 pprFields = sep . punctuate comma . map (\(s,e) -> ppr s <+> equals <+> ppr e)

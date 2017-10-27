@@ -33,7 +33,7 @@ module DynFlags (
         gopt, gopt_set, gopt_unset, setGeneralFlag', unSetGeneralFlag',
         wopt, wopt_set, wopt_unset,
         wopt_fatal,
-        xopt, xopt_set, xopt_unset,
+        xopt, xopt_set, xopt_unset, xopts_toggle,
         lang_set,
         useUnicodeSyntax,
         whenGeneratingDynamicToo, ifGeneratingDynamicToo,
@@ -230,6 +230,7 @@ import qualified EnumSet
 
 import GHC.Foreign (withCString, peekCString)
 import qualified GHC.LanguageExtensions as LangExt
+import GHC.OnOff (OnOff(..))
 
 import Foreign (Ptr) -- needed for 2nd stage
 
@@ -1926,14 +1927,6 @@ Note [Verbosity levels]
     5   |   "ghc -v -ddump-all"
 -}
 
-data OnOff a = On a
-             | Off a
-  deriving (Eq, Show)
-
-instance Outputable a => Outputable (OnOff a) where
-  ppr (On x)  = text "On" <+> ppr x
-  ppr (Off x) = text "Off" <+> ppr x
-
 -- OnOffs accumulate in reverse order, so we use foldr in order to
 -- process them in the right order
 flattenExtensionFlags :: Maybe Language -> [OnOff LangExt.Extension] -> EnumSet LangExt.Extension
@@ -2088,6 +2081,14 @@ xopt_set dfs f
 xopt_unset :: DynFlags -> LangExt.Extension -> DynFlags
 xopt_unset dfs f
     = let onoffs = Off f : extensions dfs
+      in dfs { extensions = onoffs,
+               extensionFlags = flattenExtensionFlags (language dfs) onoffs }
+
+-- | Toggle a list of 'LangExt.Extension's to be on or off.
+-- Processes the extensions in left-to-right order.
+xopts_toggle :: DynFlags -> [OnOff LangExt.Extension] -> DynFlags
+xopts_toggle dfs fs
+    = let onoffs = reverse fs ++ extensions dfs
       in dfs { extensions = onoffs,
                extensionFlags = flattenExtensionFlags (language dfs) onoffs }
 

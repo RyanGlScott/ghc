@@ -10,6 +10,8 @@ module GHCi.TH.Binary () where
 
 import Data.Binary
 import qualified Data.ByteString as B
+import GHC.LanguageExtensions ()
+import GHC.OnOff ()
 import GHC.Serialized
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH

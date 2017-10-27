@@ -24,6 +24,7 @@ module Language.Haskell.TH.Syntax
       -- * Language extensions
     , module Language.Haskell.TH.LanguageExtensions
     , ForeignSrcLang(..)
+    , OnOff(..)
     ) where
 
 import Data.Data hiding (Fixity(..))
@@ -39,6 +40,7 @@ import Data.Ratio
 import GHC.Generics     ( Generic )
 import GHC.Lexeme       ( startsVarSym, startsVarId )
 import GHC.ForeignSrcLang.Type
+import GHC.OnOff.Type
 import Language.Haskell.TH.LanguageExtensions
 import Numeric.Natural
 
@@ -1588,6 +1590,7 @@ data Exp
   | StaticE Exp                        -- ^ @{ static e }@
   | UnboundVarE Name                   -- ^ @{ _x }@ (hole)
   | LabelE String                      -- ^ @{ #x }@ ( Overloaded label )
+  | WithExtsE [OnOff Extension] Exp    -- TODO RGS Docs
   deriving( Show, Eq, Ord, Data, Generic )
 
 type FieldExp = (Name,Exp)

@@ -656,6 +656,10 @@ zonkExpr env (HsTcBracketOut body bs)
 zonkExpr _ (HsSpliceE s) = WARN( True, ppr s ) -- Should not happen
                            return (HsSpliceE s)
 
+zonkExpr env (HsWithExtsE exts e)
+  = do e' <- zonkLExpr env e
+       pure $ HsWithExtsE exts e'
+
 zonkExpr env (OpApp e1 op fixity e2)
   = do new_e1 <- zonkLExpr env e1
        new_op <- zonkLExpr env op

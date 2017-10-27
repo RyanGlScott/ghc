@@ -624,6 +624,9 @@ addTickHsExpr e@(HsBracket     {})   = return e
 addTickHsExpr e@(HsTcBracketOut  {}) = return e
 addTickHsExpr e@(HsRnBracketOut  {}) = return e
 addTickHsExpr e@(HsSpliceE  {})      = return e
+addTickHsExpr (HsWithExtsE exts e) = do
+    e' <- addTickLHsExpr e
+    pure $ HsWithExtsE exts e'
 addTickHsExpr (HsProc pat cmdtop) =
         liftM2 HsProc
                 (addTickLPat pat)

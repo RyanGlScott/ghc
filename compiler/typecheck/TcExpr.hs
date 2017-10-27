@@ -1042,6 +1042,10 @@ tcExpr e@(HsBracket brack)         res_ty
   = tcTypedBracket e brack res_ty
 tcExpr e@(HsRnBracketOut brack ps) res_ty
   = tcUntypedBracket e brack ps res_ty
+tcExpr (HsWithExtsE exts expr) res_ty
+  = toggleXOptsM exts $
+    do { expr' <- tcMonoExpr expr res_ty
+       ; pure $ HsWithExtsE exts expr' }
 
 {-
 ************************************************************************

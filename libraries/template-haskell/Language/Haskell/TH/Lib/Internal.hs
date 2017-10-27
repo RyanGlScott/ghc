@@ -326,6 +326,10 @@ recUpdE e fs = do { e1 <- e; flds <- sequence fs; return (RecUpdE e1 flds) }
 stringE :: String -> ExpQ
 stringE = litE . stringL
 
+withExtsE :: [OnOff Extension] -> ExpQ -> ExpQ
+withExtsE exts e = do e' <- e
+                      pure $ WithExtsE exts e'
+
 fieldExp :: Name -> ExpQ -> Q (Name, Exp)
 fieldExp s e = do { e' <- e; return (s,e') }
 

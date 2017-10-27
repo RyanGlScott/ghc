@@ -3420,6 +3420,7 @@ exprCtOrigin (HsBracket {})     = Shouldn'tHappenOrigin "TH bracket"
 exprCtOrigin (HsRnBracketOut {})= Shouldn'tHappenOrigin "HsRnBracketOut"
 exprCtOrigin (HsTcBracketOut {})= panic "exprCtOrigin HsTcBracketOut"
 exprCtOrigin (HsSpliceE {})     = Shouldn'tHappenOrigin "TH splice"
+exprCtOrigin (HsWithExtsE _ e)  = lexprCtOrigin e
 exprCtOrigin (HsProc {})        = Shouldn'tHappenOrigin "proc"
 exprCtOrigin (HsStatic {})      = Shouldn'tHappenOrigin "static expression"
 exprCtOrigin (HsArrApp {})      = panic "exprCtOrigin HsArrApp"

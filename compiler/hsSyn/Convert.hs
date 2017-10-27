@@ -866,6 +866,7 @@ cvtl e = wrapL (cvt e)
     cvt (StaticE e)      = fmap (HsStatic placeHolderNames) $ cvtl e
     cvt (UnboundVarE s)  = do { s' <- vName s; return $ HsVar (noLoc s') }
     cvt (LabelE s)       = do { return $ HsOverLabel Nothing (fsLit s) }
+    cvt (WithExtsE exts e) = do { e' <- cvtl e; return $ HsWithExtsE exts e' }
 
 {- Note [Dropping constructors]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

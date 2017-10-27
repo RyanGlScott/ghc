@@ -205,6 +205,11 @@ rnExpr e@(HsBracket br_body) = rnBracket e br_body
 
 rnExpr (HsSpliceE splice) = rnSpliceExpr splice
 
+rnExpr (HsWithExtsE exts e)
+  = toggleXOptsM exts $
+    do { (e', fvs) <- rnLExpr e
+       ; pure (HsWithExtsE exts e', fvs) }
+
 ---------------------------------------------
 --      Sections
 -- See Note [Parsing sections] in Parser.y

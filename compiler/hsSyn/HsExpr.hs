@@ -47,6 +47,8 @@ import Type
 import Data.Data hiding (Fixity(..))
 import qualified Data.Data as Data (Fixity(..))
 import Data.Maybe (isNothing)
+import GHC.LanguageExtensions (Extension)
+import GHC.OnOff (OnOff)
 
 import GHCi.RemoteTypes ( ForeignRef )
 import qualified Language.Haskell.TH as TH (Q)
@@ -588,6 +590,9 @@ data HsExpr p
   -- For details on above see note [Api annotations] in ApiAnnotation
   | HsSpliceE  (HsSplice p)
 
+  -- TODO RGS Docs
+  | HsWithExtsE [OnOff Extension] (LHsExpr p)
+
   -----------------------------------------------------------
   -- Arrow notation extension
 
@@ -999,6 +1004,7 @@ ppr_expr (HsWrap co_fn e)
                                              else pprExpr e)
 
 ppr_expr (HsSpliceE s)         = pprSplice s
+ppr_expr (HsWithExtsE _ e)     = ppr_lexpr e
 ppr_expr (HsBracket b)         = pprHsBracket b
 ppr_expr (HsRnBracketOut e []) = ppr e
 ppr_expr (HsRnBracketOut e ps) = ppr e $$ text "pending(rn)" <+> ppr ps

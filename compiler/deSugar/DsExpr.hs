@@ -298,7 +298,6 @@ ds_expr _ (HsAppTypeOut e _)
     -- ignore type arguments here; they're in the wrappers instead at this point
   = dsLExpr e
 
-
 {-
 Note [Desugaring vars]
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -716,6 +715,7 @@ ds_expr _ expr@(RecordUpd { rupd_expr = record_expr, rupd_flds = fields
 ds_expr _ (HsRnBracketOut _ _) = panic "dsExpr HsRnBracketOut"
 ds_expr _ (HsTcBracketOut x ps) = dsBracket x ps
 ds_expr _ (HsSpliceE s)  = pprPanic "dsExpr:splice" (ppr s)
+ds_expr _ (HsWithExtsE exts e) = toggleXOptsM exts $ dsLExpr e
 
 -- Arrow notation extension
 ds_expr _ (HsProc pat cmd) = dsProcExpr pat cmd

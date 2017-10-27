@@ -21,6 +21,7 @@ module TcRnMonad(
   setXOptM, unsetXOptM, unsetGOptM, unsetWOptM,
   whenDOptM, whenGOptM, whenWOptM,
   whenXOptM, unlessXOptM,
+  toggleXOptsM,
   getGhcMode,
   withDoDynamicToo,
   getEpsVar,
@@ -172,6 +173,7 @@ import BasicTypes( TopLevelFlag )
 import Maybes
 
 import qualified GHC.LanguageExtensions as LangExt
+import GHC.OnOff
 
 import Control.Exception
 import Data.IORef
@@ -480,6 +482,10 @@ setXOptM flag =
 unsetXOptM :: LangExt.Extension -> TcRnIf gbl lcl a -> TcRnIf gbl lcl a
 unsetXOptM flag =
   updTopEnv (\top -> top { hsc_dflags = xopt_unset (hsc_dflags top) flag})
+
+toggleXOptsM :: [OnOff LangExt.Extension] -> TcRnIf gbl lcl a -> TcRnIf gbl lcl a
+toggleXOptsM flags =
+  updTopEnv (\top -> top { hsc_dflags = xopts_toggle (hsc_dflags top) flags})
 
 unsetGOptM :: GeneralFlag -> TcRnIf gbl lcl a -> TcRnIf gbl lcl a
 unsetGOptM flag =

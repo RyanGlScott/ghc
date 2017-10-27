@@ -8,9 +8,11 @@
 --
 -- A data type defining the language extensions supported by GHC.
 --
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 module GHC.LanguageExtensions.Type ( Extension(..) ) where
 
+import Data.Data
 import GHC.Generics
 
 -- | The language extensions known to GHC.
@@ -131,4 +133,4 @@ data Extension
    | Strict
    | StrictData
    | MonadFailDesugaring
-   deriving (Eq, Enum, Show, Generic)
+   deriving (Eq, Enum, Ord, Show, Data, Generic)

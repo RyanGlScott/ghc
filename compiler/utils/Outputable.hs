@@ -125,6 +125,7 @@ import Data.Graph (SCC(..))
 import Data.List (intersperse)
 
 import GHC.Fingerprint
+import GHC.OnOff
 import GHC.Show         ( showMultiLineString )
 import GHC.Stack        ( callStack, prettyCallStack )
 import Control.Monad.IO.Class
@@ -883,6 +884,10 @@ instance Outputable Serialized where
 
 instance Outputable Extension where
     ppr = text . show
+
+instance Outputable a => Outputable (OnOff a) where
+  ppr (On x)  = text "On" <+> ppr x
+  ppr (Off x) = text "Off" <+> ppr x
 
 {-
 ************************************************************************

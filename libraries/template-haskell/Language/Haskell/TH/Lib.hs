@@ -40,7 +40,8 @@ module Language.Haskell.TH.Lib (
         dyn, varE, unboundVarE, labelE,  conE, litE, appE, appTypeE, uInfixE, parensE,
         staticE, infixE, infixApp, sectionL, sectionR,
         lamE, lam1E, lamCaseE, tupE, unboxedTupE, unboxedSumE, condE, multiIfE,
-        letE, caseE, appsE, listE, sigE, recConE, recUpdE, stringE, fieldExp,
+        letE, caseE, appsE, listE, sigE, recConE, recUpdE, stringE, withExtsE,
+        fieldExp,
     -- **** Ranges
     fromE, fromThenE, fromToE, fromThenToE,
 
