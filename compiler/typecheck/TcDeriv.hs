@@ -49,7 +49,10 @@ import RdrName
 import Name
 import NameSet
 import TyCon
+import TcHsSyn
+import TcMType
 import TcType
+import TcUnify
 import Var
 import VarEnv
 import VarSet
@@ -675,8 +678,10 @@ deriveTyData :: [TyVar] -> TyCon -> [Type]   -- LHS of data or data instance
 -- a no-op nowadays.
 deriveTyData tvs tc tc_args deriv_strat deriv_pred
   = setSrcSpan (getLoc (hsSigType deriv_pred)) $  -- Use loc of the 'deriving' item
-    do  { (deriv_tvs, cls, cls_tys, cls_arg_kinds)
-                <- tcExtendTyVarEnv tvs $
+    do  { (subst, tvs') <- newMetaTyVars tvs
+        ; let tc_args' = substTys subst tc_args
+        ; (deriv_tvs, cls, cls_tys, cls_arg_kinds)
+                <- tcExtendTyVarEnv tvs' $
                    tcHsDeriv deriv_pred
                 -- Deriving preds may (now) mention
                 -- the type variables for the type constructor, hence tcExtendTyVarenv
@@ -700,7 +705,7 @@ deriveTyData tvs tc tc_args deriv_strat deriv_pred
               n_args_to_drop  = length arg_kinds
               n_args_to_keep  = tyConArity tc - n_args_to_drop
               (tc_args_to_keep, args_to_drop)
-                              = splitAt n_args_to_keep tc_args
+                              = splitAt n_args_to_keep tc_args'
               inst_ty_kind    = typeKind (mkTyConApp tc tc_args_to_keep)
 
               -- Match up the kinds, and apply the resulting kind substitution
@@ -713,6 +718,7 @@ deriveTyData tvs tc tc_args deriv_strat deriv_pred
         ; checkTc (enough_args && isJust mb_match)
                   (derivingKindErr tc cls cls_tys cls_arg_kind enough_args)
 
+        {-
         ; let Just kind_subst = mb_match
               ki_subst_range  = getTCvSubstRangeFVs kind_subst
               all_tkvs        = toposortTyVars $
@@ -727,22 +733,46 @@ deriveTyData tvs tc tc_args deriv_strat deriv_pred
                                           kind_subst unmapped_tkvs
               final_tc_args   = substTys subst tc_args_to_keep
               final_cls_tys   = substTys subst cls_tys
-              tkvs            = tyCoVarsOfTypesWellScoped $
-                                final_cls_tys ++ final_tc_args
+        -}
+        -- TODO RGS Move up
+        ; let tkvs = toposortTyVars $
+                     deriv_tvs ++ tyCoVarsOfTypesList tc_args_to_keep
+
+        ; pprTrace "RGS Before zonking"
+            (vcat [ text "tkvs" <+> ppr tkvs
+                  , text "cls_tys" <+> ppr cls_tys
+                  , text "tc_args_to_keep" <+> ppr tc_args_to_keep
+                  ]) $ return ()
+        ; _ <- solveEqualities $
+               unifyType Nothing inst_ty_kind cls_arg_kind
+        ; tkvs'         <- mapM zonkQuantifiedTyVar tkvs
+        ; final_cls_tys <- zonkTcTypes cls_tys
+        ; final_tc_args <- zonkTcTypes tc_args_to_keep
+        ; pprTrace "RGS After zonking"
+            (vcat [ text "tkvs" <+> ppr tkvs
+                  , text "cls_tys" <+> ppr cls_tys
+                  , text "tc_args_to_keep" <+> ppr tc_args_to_keep
+
+                  , text "tkvs'" <+> ppr tkvs'
+                  , text "final_cls_tys" <+> ppr final_cls_tys
+                  , text "final_tc_args" <+> ppr final_tc_args
+                  ]) $ return ()
 
         ; traceTc "Deriving strategy (deriving clause)" $
             vcat [ppr deriv_strat, ppr deriv_pred]
 
-        ; traceTc "derivTyData1" (vcat [ pprTyVars tvs, ppr tc, ppr tc_args
-                                       , ppr deriv_pred
-                                       , pprTyVars (tyCoVarsOfTypesList tc_args)
-                                       , ppr n_args_to_keep, ppr n_args_to_drop
-                                       , ppr inst_ty_kind, ppr cls_arg_kind, ppr mb_match
-                                       , ppr final_tc_args, ppr final_cls_tys ])
+        ; traceTc "derivTyData1"
+            (vcat [ pprTyVars tvs', ppr tc, ppr tc_args'
+                  , ppr deriv_pred
+                  , pprTyVars (tyCoVarsOfTypesList tc_args')
+                  , ppr n_args_to_keep, ppr n_args_to_drop
+                  , ppr inst_ty_kind, ppr cls_arg_kind, ppr mb_match
+                  , ppr final_tc_args, ppr final_cls_tys ])
 
-        ; traceTc "derivTyData2" (vcat [ ppr tkvs ])
+        ; traceTc "derivTyData2" (vcat [ ppr tkvs, ppr tkvs' ])
 
-        ; checkTc (allDistinctTyVars (mkVarSet tkvs) args_to_drop)     -- (a, b, c)
+        ; checkTc (allDistinctTyVars (mkVarSet tkvs')
+                                     args_to_drop)     -- (a, b, c)
                   (derivingEtaErr cls final_cls_tys (mkTyConApp tc final_tc_args))
                 -- Check that
                 --  (a) The args to drop are all type variables; eg reject:
@@ -759,7 +789,7 @@ deriveTyData tvs tc tc_args deriv_strat deriv_pred
                 -- expand any type synonyms.
                 -- See Note [Eta-reducing type synonyms]
 
-        ; spec <- mkEqnHelp Nothing tkvs
+        ; spec <- mkEqnHelp Nothing tkvs'
                             cls final_cls_tys tc final_tc_args
                             Nothing deriv_strat
         ; traceTc "derivTyData" (ppr spec)
@@ -901,7 +931,7 @@ This is bad, because applying that substitution yields the following instance:
 
    instance Category k_new (T k1 c) where ...
 
-In other words, keeping k1 in unmapped_tvks taints the substitution, resulting
+In other words, keeping k1 in unmapped_tkvs taints the substitution, resulting
 in an ill-kinded instance (this caused Trac #11837).
 
 To prevent this, we need to filter out any variable from all_tkvs which either
