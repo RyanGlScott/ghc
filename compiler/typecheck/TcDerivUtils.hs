@@ -10,11 +10,10 @@ Error-checking and other utilities for @deriving@ clauses or declarations.
 
 module TcDerivUtils (
         DerivM, DerivEnv(..),
-        DerivSpec(..), pprDerivSpec, DerivSpecMechanism(..),
-        isDerivSpecStock, isDerivSpecNewtype,
-        isDerivSpecAnyClass, isDerivSpecVia,
+        DerivSpec(..), pprDerivSpec,
+        DerivSpecMechanism(..), derivSpecMechanismToStrategy, isDerivSpecStock,
+        isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia,
         DerivContext(..), DerivStatus(..),
-        isStandaloneDeriv, isStandaloneWildcardDeriv, mkDerivOrigin,
         PredOrigin(..), ThetaOrigin(..), mkPredOrigin,
         mkThetaOrigin, mkThetaOriginFromPreds, substPredOrigin,
         checkSideConditions, hasStockDeriving,
@@ -228,6 +227,13 @@ data DerivSpecMechanism
   | DerivSpecVia -- deriving via TODO Documentation
       Type
 
+-- | Convert a 'DerivSpecMechanism' to its corresponding 'DerivStrategyPostTc'.
+derivSpecMechanismToStrategy :: DerivSpecMechanism -> DerivStrategyPostTc
+derivSpecMechanismToStrategy DerivSpecStock{}   = StockStrategy
+derivSpecMechanismToStrategy DerivSpecNewtype{} = NewtypeStrategy
+derivSpecMechanismToStrategy DerivSpecAnyClass  = AnyclassStrategy
+derivSpecMechanismToStrategy (DerivSpecVia t)   = ViaStrategy t
+
 isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia
   :: DerivSpecMechanism -> Bool
 isDerivSpecStock (DerivSpecStock{}) = True
@@ -244,9 +250,9 @@ isDerivSpecVia _                = False
 
 instance Outputable DerivSpecMechanism where
   ppr (DerivSpecStock{})   = text "DerivSpecStock"
-  ppr (DerivSpecNewtype t) = text "DerivSpecNewtype" <> dcolon <+> ppr t
+  ppr (DerivSpecNewtype t) = text "DerivSpecNewtype" <> colon <+> ppr t
   ppr DerivSpecAnyClass    = text "DerivSpecAnyClass"
-  ppr (DerivSpecVia t)     = text "DerivSpecVia" <> dcolon <+> ppr t
+  ppr (DerivSpecVia t)     = text "DerivSpecVia" <> colon <+> ppr t
 
 -- | Whether GHC is processing a @deriving@ clause or a standalone deriving
 -- declaration.

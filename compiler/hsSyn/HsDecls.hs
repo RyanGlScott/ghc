@@ -47,7 +47,7 @@ module HsDecls (
   DerivDecl(..), LDerivDecl,
   -- ** Deriving strategies
   DerivStrategy'(..), LDerivStrategy, DerivStrategy,
-  LDerivStrategyPostTc, DerivStrategyPostTc,
+  LDerivStrategyPostTc, DerivStrategyPostTc, derivStrategyName,
   -- ** @RULE@ declarations
   LRuleDecls,RuleDecls(..),RuleDecl(..), LRuleDecl, RuleBndr(..),LRuleBndr,
   collectRuleBndrSigTys,
@@ -1748,6 +1748,15 @@ instance Outputable a => Outputable (DerivStrategy' a) where
     ppr AnyclassStrategy = text "anyclass"
     ppr NewtypeStrategy  = text "newtype"
     ppr (ViaStrategy ty) = text "via" <+> parens (ppr ty)
+
+-- | A short description of a @DerivStrategy'@.
+derivStrategyName :: DerivStrategy' a -> SDoc
+derivStrategyName = text . go
+  where
+    go StockStrategy    = "stock"
+    go AnyclassStrategy = "anyclass"
+    go NewtypeStrategy  = "newtype"
+    go (ViaStrategy {}) = "via"
 
 {-
 ************************************************************************
