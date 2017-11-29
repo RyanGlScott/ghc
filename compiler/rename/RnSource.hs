@@ -1804,7 +1804,7 @@ badGadtStupidTheta _
 
 illegalDerivStrategyErr :: DerivStrategy GhcPs -> SDoc
 illegalDerivStrategyErr ds
-  = vcat [ text "Illegal deriving strategy" <> colon <+> ppr ds
+  = vcat [ text "Illegal deriving strategy" <> colon <+> derivStrategyName ds
          , text "Use DerivingStrategies to enable this extension" ]
 
 multipleDerivClausesErr :: SDoc
