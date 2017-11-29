@@ -1682,8 +1682,7 @@ doDerivInstErrorChecks1 mechanism = do
     DerivEnv { denv_tc      = tc
              , denv_rep_tc  = rep_tc
              , denv_mtheta  = mtheta } <- ask
-    let anyclass_strategy = isDerivSpecAnyClass mechanism
-        bale_out msg = do err <- derivingThingErrMechanism mechanism msg
+    let bale_out msg = do err <- derivingThingErrMechanism mechanism msg
                           lift $ failWithTc err
 
     -- For standalone deriving (mtheta /= Nothing),
@@ -1699,8 +1698,12 @@ doDerivInstErrorChecks1 mechanism = do
 
     -- ...however, we don't perform this check if we're using DeriveAnyClass,
     -- since it doesn't generate any code that requires use of a data
-    -- constructor.
-    unless (anyclass_strategy || isNothing mtheta || not hidden_data_cons) $
+    -- constructor. Nor do we perform this check with @deriving via@, as it
+    -- doesn't explicitly require the constructors to be in scope.
+    unless (isDerivSpecAnyClass mechanism
+            || isDerivSpecVia mechanism
+            || isNothing mtheta
+            || not hidden_data_cons) $
            bale_out $ derivingHiddenErr tc
 
 doDerivInstErrorChecks2 :: Class -> ClsInst -> DerivSpecMechanism -> TcM ()
@@ -1939,7 +1942,7 @@ derivingThingErr :: Bool -> Class -> [Type] -> Type
                  -> Maybe DerivStrategyPostTc -> MsgDoc -> MsgDoc
 derivingThingErr newtype_deriving cls cls_tys inst_ty mb_strat why
   = derivingThingErr' newtype_deriving cls cls_tys inst_ty mb_strat
-                      (maybe empty ppr mb_strat) why
+                      (maybe empty derivStrategyName mb_strat) why
 
 derivingThingErrM :: Bool -> MsgDoc -> DerivM MsgDoc
 derivingThingErrM newtype_deriving why
@@ -1959,7 +1962,9 @@ derivingThingErrMechanism mechanism why
                 , denv_cls_tys = cls_tys
                 , denv_strat   = mb_strat } <- ask
        pure $ derivingThingErr' (isDerivSpecNewtype mechanism) cls cls_tys
-                (mkTyConApp tc tc_args) mb_strat (ppr mechanism) why
+                (mkTyConApp tc tc_args) mb_strat
+                (derivStrategyName $ derivSpecMechanismToStrategy mechanism)
+                why
 
 derivingThingErr' :: Bool -> Class -> [Type] -> Type
                   -> Maybe DerivStrategyPostTc -> MsgDoc -> MsgDoc -> MsgDoc
