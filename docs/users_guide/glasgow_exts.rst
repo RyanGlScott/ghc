@@ -4911,6 +4911,38 @@ Currently, the deriving strategies are:
 
 - ``newtype``: Use :extension:`GeneralizedNewtypeDeriving`
 
+.. _default-deriving-strategy:
+
+Default deriving strategy
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If an explicit deriving strategy is not given, multiple strategies may apply.
+In that case, GHC chooses the strategy as follows:
+
+1. Stock type classes, i.e. those specified in the report and those enabled by
+   `language extensions <#deriving-extra>`__, are derived using the ``stock``
+   strategy, with the following exception:
+
+   * For newtypes, ``Eq``, ``Ord``, ``Ix`` and ``Bounded`` are always derived
+     using the ``newtype`` strategy, even without
+     ``GeneralizedNewtypeDeriving`` enabled. (There should be no observable
+     difference to instances derived using the stock strategy.)
+
+   * Also for newtypes, ``Functor``, ``Foldable`` and ``Enum`` are derived
+     using the ``newtype`` strategy if ``GeneralizedNewtypeDeriving`` is
+     enabled and the derivation succeeds.
+
+2. For other any type class:
+
+   1. When ``DeriveAnyClass`` is enabled, use ``anyclass``.
+
+   2. When ``GeneralizedNewtypeDeriving`` is enabled and we are deriving for a
+      newtype, then use ``newytype``.
+
+   If both rules apply to a deriving clause, then ``anyclass`` is used and the
+   user is warned about the ambiguity. The warning can be avoided by explicitly
+   stating the desired deriving strategy.
+
 .. _deriving-via:
 
 Deriving via
@@ -5018,39 +5050,6 @@ can override it with a second ``App`` ::
     newtype Kleisli m a b = (a -> m b)
       deriving (Semigroup, Monoid)
         via (App ((->) a) (App m b))
-
-.. _default-deriving-strategy:
-
-Default deriving strategy
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If an explicit deriving strategy is not given, multiple strategies may apply.
-In that case, GHC chooses the strategy as follows:
-
-1. Stock type classes, i.e. those specified in the report and those enabled by
-   `language extensions <#deriving-extra>`__, are derived using the ``stock``
-   strategy, with the following exception:
-
-   * For newtypes, ``Eq``, ``Ord``, ``Ix`` and ``Bounded`` are always derived
-     using the ``newtype`` strategy, even without
-     ``GeneralizedNewtypeDeriving`` enabled. (There should be no observable
-     difference to instances derived using the stock strategy.)
-
-   * Also for newtypes, ``Functor``, ``Foldable`` and ``Enum`` are derived
-     using the ``newtype`` strategy if ``GeneralizedNewtypeDeriving`` is
-     enabled and the derivation succeeds.
-
-2. For other any type class:
-
-   1. When ``DeriveAnyClass`` is enabled, use ``anyclass``.
-
-   2. When ``GeneralizedNewtypeDeriving`` is enabled and we are deriving for a
-      newtype, then use ``newytype``.
-
-   If both rules apply to a deriving clause, then ``anyclass`` is used and the
-   user is warned about the ambiguity. The warning can be avoided by explicitly
-   stating the desired deriving strategy.
-
 
 .. _pattern-synonyms:
 
