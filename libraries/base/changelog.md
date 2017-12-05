@@ -3,6 +3,8 @@
 ## 4.11.0.0 *TBA*
   * Bundled with GHC 8.4.1
 
+  * Add `showHFloat` to `Numeric`
+
   * Add `Div`, `Mod`, and `Log2` functions on type-level naturals 
     in `GHC.TypeLits`.
 
@@ -50,6 +52,8 @@
 
   * Make `zipWith` and `zipWith3` inlinable (#14224)
 
+  * `Type.Reflection.App` now matches on function types (fixes #14236)
+
   * `Type.Reflection.withTypeable` is now polymorphic in the `RuntimeRep` of
     its result.
 
@@ -61,6 +65,9 @@
 
   * Add `generateCrashDumpFile` to `MiscFlags` in `GHC.RTS.Flags` to determine
     if a core dump will be generated on crashes.
+
+  * Add `generateStackTrace` to `MiscFlags` in `GHC.RTS.Flags` to determine if
+    stack traces will be generated on unhandled exceptions by the RTS.
 
 ## 4.10.0.0 *July 2017*
   * Bundled with GHC 8.2.1

@@ -130,13 +130,13 @@ We can now catch a @MismatchedParentheses@ exception as
 @SomeCompilerException@, but not other types, e.g. @IOException@:
 
 @
-*Main> throw MismatchedParentheses `catch` \e -> putStrLn (\"Caught \" ++ show (e :: MismatchedParentheses))
+*Main> throw MismatchedParentheses \`catch\` \\e -> putStrLn (\"Caught \" ++ show (e :: MismatchedParentheses))
 Caught MismatchedParentheses
-*Main> throw MismatchedParentheses `catch` \e -> putStrLn (\"Caught \" ++ show (e :: SomeFrontendException))
+*Main> throw MismatchedParentheses \`catch\` \\e -> putStrLn (\"Caught \" ++ show (e :: SomeFrontendException))
 Caught MismatchedParentheses
-*Main> throw MismatchedParentheses `catch` \e -> putStrLn (\"Caught \" ++ show (e :: SomeCompilerException))
+*Main> throw MismatchedParentheses \`catch\` \\e -> putStrLn (\"Caught \" ++ show (e :: SomeCompilerException))
 Caught MismatchedParentheses
-*Main> throw MismatchedParentheses `catch` \e -> putStrLn (\"Caught \" ++ show (e :: IOException))
+*Main> throw MismatchedParentheses \`catch\` \\e -> putStrLn (\"Caught \" ++ show (e :: IOException))
 *** Exception: MismatchedParentheses
 @
 
@@ -167,8 +167,8 @@ instance Exception SomeException where
 throw :: Exception e => e -> a
 throw e = raise# (toException e)
 
--- |This is thrown when the user calls 'error'. The @String@ is the
--- argument given to 'error'.
+-- | This is thrown when the user calls 'error'. The first @String@ is the
+-- argument given to 'error', second @String@ is the location.
 data ErrorCall = ErrorCallWithLocation String String
     deriving (Eq, Ord)
 

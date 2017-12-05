@@ -93,6 +93,7 @@ test('T5626', exit_code(1), compile_and_run, [''])
 test('T5747', when(arch('i386'), extra_hc_opts('-msse2')), compile_and_run, ['-O2'])
 test('T5785', normal, compile_and_run, [''])
 test('setByteArray', normal, compile_and_run, [''])
+test('compareByteArrays', normal, compile_and_run, [''])
 
 test('T6146', normal, compile_and_run, [''])
 test('T5900', normal, compile_and_run, [''])
@@ -158,3 +159,7 @@ test('T9577', [ unless(arch('x86_64') or arch('i386'),skip),
 
 test('T13425', normal, compile_and_run, ['-O'])
 test('castFloatWord', normal, compile_and_run, ['-dcmm-lint'])
+test('T13825-unit',
+     extra_run_opts('"' + config.libdir + '"'),
+     compile_and_run,
+     ['-package ghc'])

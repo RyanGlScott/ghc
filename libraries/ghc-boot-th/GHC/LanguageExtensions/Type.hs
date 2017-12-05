@@ -81,6 +81,7 @@ data Extension
    | DeriveAnyClass           -- Allow deriving any class
    | DeriveLift               -- Allow deriving Lift
    | DerivingStrategies
+   | DerivingVia              -- Derive through equal representation
 
    | TypeSynonymInstances
    | FlexibleContexts
@@ -120,6 +121,7 @@ data Extension
    | MultiWayIf
    | BinaryLiterals
    | NegativeLiterals
+   | HexFloatLiterals
    | DuplicateRecordFields
    | OverloadedLabels
    | EmptyCase
@@ -131,4 +133,5 @@ data Extension
    | Strict
    | StrictData
    | MonadFailDesugaring
+   | EmptyDataDeriving
    deriving (Eq, Enum, Show, Generic)

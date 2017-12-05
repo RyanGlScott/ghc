@@ -221,11 +221,8 @@ to GHC's runtime system you can enclose them in ``+RTS ... -RTS`` (see
 Options affecting the C pre-processor
 -------------------------------------
 
-.. ghc-flag:: -XCPP
-    :shortdesc: Enable the :ref:`C preprocessor <c-pre-processor>`.
-    :type: dynamic
-    :reverse: -XNoCPP
-    :category: language
+.. extension:: CPP
+    :shortdesc: Enable the C preprocessor.
 
     :since: 6.8.1
 
@@ -1145,5 +1142,5 @@ for example).
     executables to ensure that only one ``libHSrts`` is present if
     loaded into the address space of another Haskell process.
 
-    Also, you may need to use the :ghc-flags:`-rdynamic` flag to ensure that
+    Also, you may need to use the :ghc-flag:`-rdynamic` flag to ensure that
     that symbols are not dropped from your PIE objects.

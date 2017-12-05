@@ -560,8 +560,8 @@ ghc/stage2/package-data.mk: compiler/stage2/package-data.mk
 # all the other libraries' package-data.mk files.
 utils/haddock/dist/package-data.mk: compiler/stage2/package-data.mk
 utils/ghctags/dist-install/package-data.mk: compiler/stage2/package-data.mk
-testsuite/utils/check-api-annotations/dist-install/package-data.mk: compiler/stage2/package-data.mk
-testsuite/utils/check-ppr/dist-install/package-data.mk: compiler/stage2/package-data.mk
+utils/check-api-annotations/dist-install/package-data.mk: compiler/stage2/package-data.mk
+utils/check-ppr/dist-install/package-data.mk: compiler/stage2/package-data.mk
 
 # add the final package.conf dependency: ghc-prim depends on RTS
 libraries/ghc-prim/dist-install/package-data.mk : rts/dist/package.conf.inplace
@@ -598,15 +598,9 @@ libraries/ghci_dist-install_CONFIGURE_OPTS += --flags=ghci
 
 # We want the ghc-prim package to include the GHC.Prim module when it
 # is registered, but not when it is built, because GHC.Prim is not a
-# real source module, it is built-in to GHC.  The old build system did
-# this using Setup.hs, but we can't do that here, so we have a flag to
-# enable GHC.Prim in the .cabal file (so that the ghc-prim package
-# remains compatible with the old build system for the time being).
-# GHC.Prim module in the ghc-prim package with a flag:
-#
-libraries/ghc-prim_CONFIGURE_OPTS += --flag=include-ghc-prim
+# real source module, it is built-in to GHC.
 
-# And then we strip it out again before building the package:
+# Strip it out again before building the package:
 define libraries/ghc-prim_PACKAGE_MAGIC
 libraries/ghc-prim_dist-install_MODULES := $$(filter-out GHC.Prim,$$(libraries/ghc-prim_dist-install_MODULES))
 endef
@@ -684,6 +678,8 @@ BUILD_DIRS += utils/hsc2hs
 BUILD_DIRS += utils/ghc-pkg
 BUILD_DIRS += utils/testremove
 BUILD_DIRS += utils/ghctags
+BUILD_DIRS += utils/check-api-annotations
+BUILD_DIRS += utils/check-ppr
 BUILD_DIRS += utils/ghc-cabal
 BUILD_DIRS += utils/hpc
 BUILD_DIRS += utils/runghc
@@ -692,19 +688,6 @@ BUILD_DIRS += docs/users_guide
 BUILD_DIRS += utils/count_lines
 BUILD_DIRS += utils/compare_sizes
 BUILD_DIRS += iserv
-
-# If we are in a tree derived from a source tarball the testsuite/ directory may
-# not exist, meaning we can't build the testsuite/utils packages.
-ifeq "$(wildcard testsuite/Makefile)" ""
-HaveTestsuite = NO
-else
-HaveTestsuite = YES
-endif
-
-ifeq "$(HaveTestsuite)" "YES"
-BUILD_DIRS += testsuite/utils/check-api-annotations
-BUILD_DIRS += testsuite/utils/check-ppr
-endif
 
 # ----------------------------------------------
 # Actually include the sub-ghc.mk's
@@ -745,8 +728,8 @@ ifneq "$(CrossCompiling) $(Stage1Only)" "NO NO"
 # See Note [No stage2 packages when CrossCompiling or Stage1Only].
 # See Note [Stage1Only vs stage=1] in mk/config.mk.in.
 BUILD_DIRS := $(filter-out utils/ghctags,$(BUILD_DIRS))
-BUILD_DIRS := $(filter-out testsuite/utils/check-api-annotations,$(BUILD_DIRS))
-BUILD_DIRS := $(filter-out testsuite/utils/check-ppr,$(BUILD_DIRS))
+BUILD_DIRS := $(filter-out utils/check-api-annotations,$(BUILD_DIRS))
+BUILD_DIRS := $(filter-out utils/check-ppr,$(BUILD_DIRS))
 endif
 endif # CLEANING
 
@@ -1583,14 +1566,3 @@ phase_0_builds: $(utils/deriveConstants_dist_depfile_c_asm)
 
 .PHONY: phase_1_builds
 phase_1_builds: $(PACKAGE_DATA_MKS)
-
-# Various utilities in testsuite/utils which must be built before
-# the testsuite is run.
-.PHONY: testsuite_utils
-testsuite_utils:
-ifeq "$(HaveTestsuite)" "NO"
-	@echo "The testsuite/ directory appears to be unavailable."
-	@echo ""
-	@echo "If this tree is from a source tarball please download and extract"
-	@echo "the corresponding testsuite tarball."
-endif

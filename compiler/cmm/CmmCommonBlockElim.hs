@@ -316,7 +316,7 @@ eqMiddleWith dflags eqBid env a b =
      -- result registers aren't compared since they are binding occurrences
     (CmmUnsafeForeignCall t1 _ a1,  CmmUnsafeForeignCall t2 _ a2) ->
         let eq = t1 == t2
-              && and (zipWith (eqExprWith eqBid env) a1 a2)
+              && eqLists (eqExprWith eqBid env) a1 a2
         in (env', eq)
 
     _ -> (env, False)
@@ -325,6 +325,11 @@ eqMiddleWith dflags eqBid env a b =
            $ List.zip defd_a defd_b
     defd_a = foldLocalRegsDefd dflags (flip (:)) [] a
     defd_b = foldLocalRegsDefd dflags (flip (:)) [] b
+
+eqLists :: (a -> b -> Bool) -> [a] -> [b] -> Bool
+eqLists f (a:as) (b:bs) = f a b && eqLists f as bs
+eqLists _ []     []     = True
+eqLists _ _      _      = False
 
 eqExprWith :: (BlockId -> BlockId -> Bool)
            -> LocalRegMapping
@@ -340,7 +345,7 @@ eqExprWith eqBid env = eq
   CmmStackSlot a1 i1 `eq` CmmStackSlot a2 i2 = eqArea a1 a2 && i1==i2
   _e1                `eq` _e2                = False
 
-  xs `eqs` ys = and (zipWith eq xs ys)
+  xs `eqs` ys = eqLists eq xs ys
 
   -- See Note [Equivalence up to local registers in CBE]
   CmmLocal a `eqReg` CmmLocal b
@@ -371,11 +376,15 @@ eqBlockBodyWith dflags eqBid block block'
         (_,m',l') = blockSplit block'
         nodes'    = filter (not . dont_care) (blockToList m')
 
-        (env_mid, eqs_mid) =
-            List.mapAccumL (\acc (a,b) -> eqMiddleWith dflags eqBid acc a b)
-                           emptyUFM
-                           (List.zip nodes nodes')
-        equal = and eqs_mid && eqLastWith eqBid env_mid l l'
+        eqMids :: LocalRegMapping -> [CmmNode O O] -> [CmmNode O O] -> Bool
+        eqMids env (a:as) (b:bs)
+          | eq = eqMids env' as bs
+          where
+            (env', eq) = eqMiddleWith dflags eqBid env a b
+        eqMids env [] [] = eqLastWith eqBid env l l'
+        eqMids _ _ _ = False
+
+        equal = eqMids emptyUFM nodes nodes'
 
 
 eqLastWith :: (BlockId -> BlockId -> Bool) -> LocalRegMapping
@@ -395,7 +404,7 @@ eqLastWith eqBid env a b =
       (CmmForeignCall t1 _ a1 s1 ret_args1 ret_off1 intrbl1,
        CmmForeignCall t2 _ a2 s2 ret_args2 ret_off2 intrbl2) ->
              t1 == t2
-          && and (zipWith (eqExprWith eqBid env) a1 a2)
+          && eqLists (eqExprWith eqBid env) a1 a2
           && s1 == s2
           && ret_args1 == ret_args2
           && ret_off1 == ret_off2

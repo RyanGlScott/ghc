@@ -86,7 +86,7 @@ canonicalize (CNonCanonical { cc_ev = ev })
       EqPred eq_rel ty1 ty2 -> do traceTcS "canEvNC:eq" (ppr ty1 $$ ppr ty2)
                                   canEqNC    ev eq_rel ty1 ty2
       IrredPred {}          -> do traceTcS "canEvNC:irred" (ppr (ctEvPred ev))
-                                  canIrred   ev
+                                  canIrred ev
 
 canonicalize (CIrredCan { cc_ev = ev })
   = canIrred ev
@@ -486,25 +486,35 @@ mk_strict_superclasses rec_clss ev cls tys
 
 canIrred :: CtEvidence -> TcS (StopOrContinue Ct)
 -- Precondition: ty not a tuple and no other evidence form
-canIrred old_ev
-  = do { let old_ty = ctEvPred old_ev
-       ; traceTcS "can_pred" (text "IrredPred = " <+> ppr old_ty)
-       ; (xi,co) <- flatten FM_FlattenAll old_ev old_ty -- co :: xi ~ old_ty
-       ; rewriteEvidence old_ev xi co `andWhenContinue` \ new_ev ->
+canIrred ev
+  | EqPred eq_rel ty1 ty2 <- classifyPredType pred
+  = -- For insolubles (all of which are equalities, do /not/ flatten the arguments
+    -- In Trac #14350 doing so led entire-unnecessary and ridiculously large
+    -- type function expansion.  Instead, canEqNC just applies
+    -- the substitution to the predicate, and may do decomposition;
+    --    e.g. a ~ [a], where [G] a ~ [Int], can decompose
+    canEqNC ev eq_rel ty1 ty2
+
+  | otherwise
+  = do { traceTcS "can_pred" (text "IrredPred = " <+> ppr pred)
+       ; (xi,co) <- flatten FM_FlattenAll ev pred -- co :: xi ~ pred
+       ; rewriteEvidence ev xi co `andWhenContinue` \ new_ev ->
     do { -- Re-classify, in case flattening has improved its shape
        ; case classifyPredType (ctEvPred new_ev) of
            ClassPred cls tys     -> canClassNC new_ev cls tys
            EqPred eq_rel ty1 ty2 -> canEqNC new_ev eq_rel ty1 ty2
            _                     -> continueWith $
                                     mkIrredCt new_ev } }
+  where
+    pred = ctEvPred ev
 
 canHole :: CtEvidence -> Hole -> TcS (StopOrContinue Ct)
 canHole ev hole
   = do { let ty = ctEvPred ev
        ; (xi,co) <- flatten FM_SubstOnly ev ty -- co :: xi ~ ty
        ; rewriteEvidence ev xi co `andWhenContinue` \ new_ev ->
-    do { emitInsoluble (CHoleCan { cc_ev = new_ev
-                                 , cc_hole = hole })
+    do { updInertIrreds (`snocCts` (CHoleCan { cc_ev = new_ev
+                                             , cc_hole = hole }))
        ; stopWith new_ev "Emit insoluble hole" } }
 
 {-
@@ -819,7 +829,8 @@ zonk_eq_types = go
             -> do { cts <- readTcRef ref
                   ; case cts of
                       Flexi        -> give_up
-                      Indirect ty' -> unSwap swapped go ty' ty }
+                      Indirect ty' -> do { trace_indirect tv ty'
+                                         ; unSwap swapped go ty' ty } }
           _ -> give_up
       where
         give_up = return $ Left $ unSwap swapped Pair (mkTyVarTy tv) ty
@@ -832,12 +843,17 @@ zonk_eq_types = go
                           then go ty1' ty2'
                           else return $ Left (Pair (TyVarTy tv1) (TyVarTy tv2)) }
 
+    trace_indirect tv ty
+       = traceTcS "Following filled tyvar (zonk_eq_types)"
+                  (ppr tv <+> equals <+> ppr ty)
+
     quick_zonk tv = case tcTyVarDetails tv of
       MetaTv { mtv_ref = ref }
         -> do { cts <- readTcRef ref
               ; case cts of
                   Flexi        -> return (TyVarTy tv, False)
-                  Indirect ty' -> return (ty', True) }
+                  Indirect ty' -> do { trace_indirect tv ty'
+                                     ; return (ty', True) } }
       _ -> return (TyVarTy tv, False)
 
       -- This happens for type families, too. But recall that failure
@@ -1300,8 +1316,7 @@ canEqHardFailure ev ty1 ty2
        ; (s2, co2) <- flatten FM_SubstOnly ev ty2
        ; rewriteEqEvidence ev NotSwapped s1 s2 co1 co2
          `andWhenContinue` \ new_ev ->
-    do { emitInsoluble (mkInsolubleCt new_ev)
-       ; stopWith new_ev "Definitely not equal" }}
+         continueWith (mkInsolubleCt new_ev) }
 
 {-
 Note [Decomposing TyConApps]
@@ -1545,21 +1560,18 @@ canEqTyVar2 dflags ev eq_rel swapped tv1 co1 orhs
        ; rewriteEqEvidence ev swapped nlhs nrhs rewrite_co1 rewrite_co2
          `andWhenContinue` \ new_ev ->
          if isInsolubleOccursCheck eq_rel tv1 nrhs
-         then do { emitInsoluble (mkInsolubleCt new_ev)
+         then continueWith (mkInsolubleCt new_ev)
              -- If we have a ~ [a], it is not canonical, and in particular
              -- we don't want to rewrite existing inerts with it, otherwise
              -- we'd risk divergence in the constraint solver
-                 ; stopWith new_ev "Occurs check" }
 
+         else continueWith (mkIrredCt new_ev) }
              -- A representational equality with an occurs-check problem isn't
              -- insoluble! For example:
              --   a ~R b a
              -- We might learn that b is the newtype Id.
              -- But, the occurs-check certainly prevents the equality from being
              -- canonical, and we might loop if we were to use it in rewriting.
-         else do { traceTcS "Possibly-soluble occurs check"
-                           (ppr nlhs $$ ppr nrhs)
-                 ; continueWith (mkIrredCt new_ev) } }
   where
     role = eqRelRole eq_rel
 
@@ -1611,7 +1623,7 @@ canEqTyVarTyVar, are these
 
 Note [Avoid unnecessary swaps]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If we swap without actually improving matters, we can get an infnite loop.
+If we swap without actually improving matters, we can get an infinite loop.
 Consider
     work item:  a ~ b
    inert item:  b ~ c
@@ -1839,7 +1851,7 @@ rewriteEvidence old_ev new_pred co
   | isTcReflCo co -- See Note [Rewriting with Refl]
   = continueWith (old_ev { ctev_pred = new_pred })
 
-rewriteEvidence ev@(CtGiven { ctev_evar = old_evar , ctev_loc = loc }) new_pred co
+rewriteEvidence ev@(CtGiven { ctev_evar = old_evar, ctev_loc = loc }) new_pred co
   = do { new_ev <- newGivenEvVar loc (new_pred, new_tm)
        ; continueWith new_ev }
   where

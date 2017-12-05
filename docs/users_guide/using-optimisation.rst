@@ -52,7 +52,6 @@ So, for example, ``ghc -c Foo.hs``
 .. ghc-flag:: -O0
     :shortdesc: Disable optimisations (default)
     :type: dynamic
-    :reverse: -O
     :category: optimization-levels
 
     Means "turn off all optimisation", reverting to the same settings as
@@ -181,6 +180,16 @@ by saying ``-fno-wombat``.
     :default: on
 
     Enable call-arity analysis.
+
+.. ghc-flag:: -fexitification
+    :shortdesc: Enables exitification optimisation. Implied by :ghc-flag:`-O`.
+    :type: dynamic
+    :reverse: -fno-exitification
+    :category:
+
+    :default: on
+
+    Enables the floating of exit paths out of recursive functions.
 
 .. ghc-flag:: -fcmm-elim-common-blocks
     :shortdesc: Enable Cmm common block elimination. Implied by :ghc-flag:`-O`.
@@ -484,6 +493,18 @@ by saying ``-fno-wombat``.
     self-recursive saturated tail calls into local jumps rather than
     function calls.
 
+.. ghc-flag:: -fllvm-pass-vectors-in-regs
+    :shortdesc: Pass vector value in vector registers for function calls
+    :type: dynamic
+    :reverse: -fno-llvm-pass-vectors-in-regs
+    :category:
+
+    :default: on
+
+    Instructs GHC to use the platform's native vector registers to pass vector
+    arguments during function calls. As with all vector support, this requires
+    :ghc-flag:`-fllvm`.
+
 .. ghc-flag:: -fmax-inline-alloc-size=⟨n⟩
     :shortdesc: *default: 128.* Set the maximum size of inline array allocations
         to ⟨n⟩ bytes (default: 128).
@@ -584,7 +605,7 @@ by saying ``-fno-wombat``.
     :type: dynamic
     :category:
 
-    :default: off
+    :default: coercion optimisation enabled.
 
     Turn off the coercion optimiser.
 
@@ -593,7 +614,7 @@ by saying ``-fno-wombat``.
     :type: dynamic
     :category:
 
-    :default: off
+    :default: pre-inlining enabled
 
     Turn off pre-inlining.
 
@@ -604,7 +625,7 @@ by saying ``-fno-wombat``.
     :type: dynamic
     :category:
 
-    :default: off
+    :default: state hack is enabled
 
     Turn off the "state hack" whereby any lambda with a ``State#`` token
     as argument is considered to be single-entry, hence it is considered
@@ -617,7 +638,7 @@ by saying ``-fno-wombat``.
     :reverse: -fno-omit-interface-pragmas
     :category:
 
-    :default: off
+    :default: Implied by :ghc-flag:`-O0`, otherwise off.
 
     Tells GHC to omit all inessential information from the interface
     file generated for the module being compiled (say M). This means
@@ -634,7 +655,7 @@ by saying ``-fno-wombat``.
     :reverse: -fno-omit-yields
     :category:
 
-    :default: on
+    :default: yield points enabled
 
     Tells GHC to omit heap checks when no allocation is
     being performed. While this improves binary sizes by about 5%, it
@@ -651,6 +672,8 @@ by saying ``-fno-wombat``.
     :type: dynamic
     :reverse: -fno-pedantic-bottoms
     :category:
+
+    :default: off
 
     Make GHC be more precise about its treatment of bottom (but see also
     :ghc-flag:`-fno-state-hack`). In particular, stop GHC eta-expanding through
