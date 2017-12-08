@@ -11,7 +11,7 @@ Error-checking and other utilities for @deriving@ clauses or declarations.
 module TcDerivUtils (
         DerivM, DerivEnv(..),
         DerivSpec(..), pprDerivSpec,
-        DerivSpecMechanism(..), isDerivSpecStock,
+        DerivSpecMechanism(..), derivSpecMechanismToStrategy, isDerivSpecStock,
         isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia,
         DerivContext, DerivStatus(..),
         PredOrigin(..), ThetaOrigin(..), mkPredOrigin,
@@ -193,6 +193,13 @@ data DerivSpecMechanism
   | DerivSpecVia -- deriving via TODO Documentation
       Type
 
+-- | Convert a 'DerivSpecMechanism' to its corresponding 'DerivStrategyPostTc'.
+derivSpecMechanismToStrategy :: DerivSpecMechanism -> DerivStrategyPostTc
+derivSpecMechanismToStrategy DerivSpecStock{}   = StockStrategy
+derivSpecMechanismToStrategy DerivSpecNewtype{} = NewtypeStrategy
+derivSpecMechanismToStrategy DerivSpecAnyClass  = AnyclassStrategy
+derivSpecMechanismToStrategy (DerivSpecVia t)   = ViaStrategy t
+
 isDerivSpecStock, isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia
   :: DerivSpecMechanism -> Bool
 isDerivSpecStock (DerivSpecStock{}) = True
@@ -209,9 +216,9 @@ isDerivSpecVia _                = False
 
 instance Outputable DerivSpecMechanism where
   ppr (DerivSpecStock{})   = text "DerivSpecStock"
-  ppr (DerivSpecNewtype t) = text "DerivSpecNewtype" <> dcolon <+> ppr t
+  ppr (DerivSpecNewtype t) = text "DerivSpecNewtype" <> colon <+> ppr t
   ppr DerivSpecAnyClass    = text "DerivSpecAnyClass"
-  ppr (DerivSpecVia t)     = text "DerivSpecVia" <> dcolon <+> ppr t
+  ppr (DerivSpecVia t)     = text "DerivSpecVia" <> colon <+> ppr t
 
 type DerivContext = Maybe ThetaType
    -- Nothing    <=> Vanilla deriving; infer the context of the instance decl

@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 module DerivingViaCompile where
 
@@ -79,3 +80,17 @@ instance (MFunctor f, MonadTrans f, MonadTrans g) => MonadTrans (ComposeT f g) w
 newtype X a = X (a, a)
   deriving (Semigroup, Monoid)
        via (Product a, Sum a)
+
+-----
+-- Abstract data types
+-----
+
+class C f where
+  c :: f a -> Int
+
+newtype X2 f a = X2 (f a)
+
+instance C (X2 f) where
+  c = const 0
+
+deriving via (X2 IO) instance C IO
