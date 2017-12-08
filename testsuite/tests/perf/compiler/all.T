@@ -197,7 +197,7 @@ test('T3294',
            # 2013-11-13: 1478325844  (x86/Windows, 64bit machine)
            # 2014-01-12: 1565185140  (x86/Linux)
            # 2013-04-04: 1377050640  (x86/Windows, 64bit machine)
-           (wordsize(64), 2253557280, 5)]),
+           (wordsize(64), 1858491504, 5)]),
             # old:        1357587088 (amd64/Linux)
             # 29/08/2012: 2961778696 (amd64/Linux)
             # (^ increase due to new codegen, see #7198)
@@ -212,6 +212,7 @@ test('T3294',
             # 2016-07-11: 2739731144 (Windows) after fix for #12227 (ignoring)
             # 2017-02-17: 2758641264 (amd64/Linux) (Type indexed Typeable)
             # 2017-05-14: 2253557280 (amd64/Linux) Two-pass CmmLayoutStack
+            # 2017-10-24: 1858491504 (amd64/Linux) Improved linear regAlloc
       conf_3294,
 
       # Use `+RTS -G1` for more stable residency measurements. Note [residency].
@@ -658,7 +659,7 @@ test('T5837',
              # 2017-02-19                       59161648 (x64/Windows) - Unknown
              # 2017-04-21                       54985248 (x64/Windows) - Unknown
 
-           (wordsize(64), 56782344, 7)])
+           (wordsize(64), 52089424, 7)])
              # sample: 3926235424 (amd64/Linux, 15/2/2012)
              # 2012-10-02 81879216
              # 2012-09-20 87254264 amd64/Linux
@@ -695,6 +696,7 @@ test('T5837',
              # 2017-02-28 54151864  amd64/Linux Likely drift due to recent simplifier improvements
              # 2017-02-25 52625920  amd64/Linux Early inlining patch
              # 2017-09-06 56782344  amd64/Linux Drift manifest in unrelated LLVM patch
+             # 2017-10-24 52089424  amd64/linux Fix space leak in BinIface.getSymbolTable
       ],
       compile, ['-freduction-depth=50'])
 
@@ -1114,10 +1116,11 @@ test('T12707',
 test('T12150',
      [ only_ways(['optasm']),
        compiler_stats_num_field('bytes allocated',
-          [(wordsize(64), 78300680, 5)
+          [(wordsize(64), 73769936, 5)
           # initial:    70773000
           # 2017-08-25: 74358208  Refactor the Mighty Simplifier
           # 2017-08-25: 78300680  Drift
+          # 2017-10-25: 73769936  amd64/linux Fix space leak in BinIface.getSymbolTable
           ]),
      ],
     compile,

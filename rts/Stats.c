@@ -310,6 +310,26 @@ stat_endGC (Capability *cap, gc_thread *gct,
     stats.gc.par_max_copied_bytes = par_max_copied * sizeof(W_);
     stats.gc.par_balanced_copied_bytes = par_balanced_copied * sizeof(W_);
 
+    bool stats_enabled =
+        RtsFlags.GcFlags.giveStats != NO_GC_STATS ||
+        rtsConfig.gcDoneHook != NULL;
+
+    if (stats_enabled
+      || RtsFlags.ProfFlags.doHeapProfile) // heap profiling needs GC_tot_time
+    {
+        // We only update the times when stats are explicitly enabled since
+        // getProcessTimes (e.g. requiring a system call) can be expensive on
+        // some platforms.
+        Time current_cpu, current_elapsed;
+        getProcessTimes(&current_cpu, &current_elapsed);
+        stats.cpu_ns = current_cpu - start_init_cpu;
+        stats.elapsed_ns = current_elapsed - start_init_elapsed;
+
+        stats.gc.sync_elapsed_ns =
+            gct->gc_start_elapsed - gct->gc_sync_start_elapsed;
+        stats.gc.elapsed_ns = current_elapsed - gct->gc_start_elapsed;
+        stats.gc.cpu_ns = current_cpu - gct->gc_start_cpu;
+    }
     // -------------------------------------------------
     // Update the cumulative stats
 
@@ -354,23 +374,8 @@ stat_endGC (Capability *cap, gc_thread *gct,
     // -------------------------------------------------
     // Do the more expensive bits only when stats are enabled.
 
-    if (RtsFlags.GcFlags.giveStats != NO_GC_STATS ||
-        rtsConfig.gcDoneHook != NULL ||
-        RtsFlags.ProfFlags.doHeapProfile) // heap profiling needs GC_tot_time
+    if (stats_enabled)
     {
-        // We only update the times when stats are explicitly enabled since
-        // getProcessTimes (e.g. requiring a system call) can be expensive on
-        // some platforms.
-        Time current_cpu, current_elapsed;
-        getProcessTimes(&current_cpu, &current_elapsed);
-        stats.cpu_ns = current_cpu - start_init_cpu;
-        stats.elapsed_ns = current_elapsed - start_init_elapsed;
-
-        stats.gc.sync_elapsed_ns =
-          gct->gc_start_elapsed - gct->gc_sync_start_elapsed;
-        stats.gc.elapsed_ns = current_elapsed - gct->gc_start_elapsed;
-        stats.gc.cpu_ns = current_cpu - gct->gc_start_cpu;
-
         // -------------------------------------------------
         // Emit events to the event log
 
@@ -628,7 +633,8 @@ stat_exit (void)
         exit_elapsed = end_exit_elapsed - start_exit_elapsed - exit_gc_elapsed;
 
         mut_elapsed = start_exit_elapsed - end_init_elapsed -
-            (gc_elapsed - exit_gc_elapsed);
+            (gc_elapsed - exit_gc_elapsed) -
+            PROF_VAL(RPe_tot_time + HCe_tot_time);
 
         mut_cpu = start_exit_cpu - end_init_cpu - (gc_cpu - exit_gc_cpu)
             - PROF_VAL(RP_tot_time + HC_tot_time);
@@ -1005,8 +1011,7 @@ void getRTSStats( RTSStats *s )
     s->cpu_ns = current_cpu - end_init_cpu;
     s->elapsed_ns = current_elapsed - end_init_elapsed;
 
-    s->mutator_cpu_ns = current_cpu - end_init_cpu - stats.gc_cpu_ns -
-        PROF_VAL(RP_tot_time + HC_tot_time);
+    s->mutator_cpu_ns = current_cpu - end_init_cpu - stats.gc_cpu_ns;
     s->mutator_elapsed_ns = current_elapsed - end_init_elapsed -
         stats.gc_elapsed_ns;
 }

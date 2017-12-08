@@ -30,6 +30,7 @@ import pthread_mutex_lock;
 import pthread_mutex_unlock;
 #endif
 import CLOSURE base_ControlziExceptionziBase_nestedAtomically_closure;
+import CLOSURE base_GHCziIOziException_heapOverflow_closure;
 import EnterCriticalSection;
 import LeaveCriticalSection;
 import CLOSURE ghczmprim_GHCziTypes_False_closure;
@@ -2377,7 +2378,7 @@ stg_noDuplicatezh /* no arg list: explicit stack layout */
 
 stg_getApStackValzh ( P_ ap_stack, W_ offset )
 {
-   if (%INFO_PTR(ap_stack) == stg_AP_STACK_info) {
+   if (%INFO_PTR(UNTAG(ap_stack)) == stg_AP_STACK_info) {
        return (1,StgAP_STACK_payload(ap_stack,offset));
    } else {
        return (0,ap_stack);

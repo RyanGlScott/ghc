@@ -24,7 +24,7 @@ Nota Bene: all Names defined in here should come from the base package
    One of these Names contains
         (a) the module and occurrence name of the thing
         (b) its Unique
-   The may way the compiler "knows about" one of these things is
+   The way the compiler "knows about" one of these things is
    where the type checker or desugarer needs to look it up. For
    example, when desugaring list comprehensions the desugarer
    needs to conjure up 'foldr'.  It does this by looking up
@@ -741,6 +741,10 @@ parens_RDR              = varQual_RDR gHC_READ (fsLit "parens")
 choose_RDR              = varQual_RDR gHC_READ (fsLit "choose")
 lexP_RDR                = varQual_RDR gHC_READ (fsLit "lexP")
 expectP_RDR             = varQual_RDR gHC_READ (fsLit "expectP")
+
+readField_RDR, readSymField_RDR :: RdrName
+readField_RDR           = varQual_RDR gHC_READ (fsLit "readField")
+readSymField_RDR        = varQual_RDR gHC_READ (fsLit "readSymField")
 
 punc_RDR, ident_RDR, symbol_RDR :: RdrName
 punc_RDR                = dataQual_RDR lEX (fsLit "Punc")

@@ -105,7 +105,7 @@ import Outputable
 import StringBuffer
 import FastString
 import UniqFM
-import Util             ( readRational )
+import Util             ( readRational, readHexRational )
 
 -- compiler/main
 import ErrUtils
@@ -129,38 +129,38 @@ import ApiAnnotation
 
 -- NB: The logic behind these definitions is also reflected in basicTypes/Lexeme.hs
 -- Any changes here should likely be reflected there.
-$unispace    = \x05 -- Trick Alex into handling Unicode. See alexGetByte.
+$unispace    = \x05 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $nl          = [\n\r\f]
 $whitechar   = [$nl\v\ $unispace]
 $white_no_nl = $whitechar # \n -- TODO #8424
 $tab         = \t
 
 $ascdigit  = 0-9
-$unidigit  = \x03 -- Trick Alex into handling Unicode. See alexGetByte.
+$unidigit  = \x03 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $decdigit  = $ascdigit -- for now, should really be $digit (ToDo)
 $digit     = [$ascdigit $unidigit]
 
 $special   = [\(\)\,\;\[\]\`\{\}]
 $ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\@\\\^\|\-\~\:]
-$unisymbol = \x04 -- Trick Alex into handling Unicode. See alexGetByte.
+$unisymbol = \x04 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $symbol    = [$ascsymbol $unisymbol] # [$special \_\"\']
 
-$unilarge  = \x01 -- Trick Alex into handling Unicode. See alexGetByte.
+$unilarge  = \x01 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $asclarge  = [A-Z]
 $large     = [$asclarge $unilarge]
 
-$unismall  = \x02 -- Trick Alex into handling Unicode. See alexGetByte.
+$unismall  = \x02 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $ascsmall  = [a-z]
 $small     = [$ascsmall $unismall \_]
 
-$unigraphic = \x06 -- Trick Alex into handling Unicode. See alexGetByte.
+$unigraphic = \x06 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $graphic   = [$small $large $symbol $digit $special $unigraphic \"\']
 
 $binit     = 0-1
 $octit     = 0-7
 $hexit     = [$decdigit A-F a-f]
 
-$uniidchar = \x07 -- Trick Alex into handling Unicode. See alexGetByte.
+$uniidchar = \x07 -- Trick Alex into handling Unicode. See [Unicode in Alex].
 $idchar    = [$small $large $digit $uniidchar \']
 
 $pragmachar = [$small $large $digit]
@@ -182,6 +182,7 @@ $docsym    = [\| \^ \* \$]
 @octal       = $octit+
 @hexadecimal = $hexit+
 @exponent    = [eE] [\-\+]? @decimal
+@bin_exponent = [pP] [\-\+]? @decimal
 
 @qual = (@conid \.)+
 @qvarid = @qual @varid
@@ -190,6 +191,7 @@ $docsym    = [\| \^ \* \$]
 @qconsym = @qual @consym
 
 @floating_point = @decimal \. @decimal @exponent? | @decimal @exponent
+@hex_floating_point = @hexadecimal \. @hexadecimal @bin_exponent? | @hexadecimal @bin_exponent
 
 -- normal signed numerical literals can only be explicitly negative,
 -- not explicitly positive (contrast @exponent)
@@ -498,6 +500,9 @@ $tab          { warnTab }
   -- Normal rational literals (:: Fractional a => a, from Rational)
   @floating_point                                                        { strtoken tok_float }
   @negative @floating_point    / { ifExtension negativeLiteralsEnabled } { strtoken tok_float }
+  0[xX] @hex_floating_point          / { ifExtension hexFloatLiteralsEnabled } { strtoken tok_hex_float }
+  @negative 0[xX]@hex_floating_point / { ifExtension hexFloatLiteralsEnabled `alexAndPred`
+                                    ifExtension negativeLiteralsEnabled } { strtoken tok_hex_float }
 }
 
 <0> {
@@ -1308,14 +1313,23 @@ hexadecimal = (16,hexDigit)
 
 -- readRational can understand negative rationals, exponents, everything.
 tok_float, tok_primfloat, tok_primdouble :: String -> Token
-tok_float      str  = ITrational   $! readFractionalLit str
-tok_primfloat  str  = ITprimfloat  $! readFractionalLit str
-tok_primdouble str  = ITprimdouble $! readFractionalLit str
+tok_float        str = ITrational   $! readFractionalLit str
+tok_hex_float    str = ITrational   $! readHexFractionalLit str
+tok_primfloat    str = ITprimfloat  $! readFractionalLit str
+tok_primdouble   str = ITprimdouble $! readFractionalLit str
 
 readFractionalLit :: String -> FractionalLit
 readFractionalLit str = ((FL $! (SourceText str)) $! is_neg) $! readRational str
                         where is_neg = case str of ('-':_) -> True
                                                    _       -> False
+readHexFractionalLit :: String -> FractionalLit
+readHexFractionalLit str =
+  FL { fl_text  = SourceText str
+     , fl_neg   = case str of
+                    '-' : _ -> True
+                    _       -> False
+     , fl_value = readHexRational str
+     }
 
 -- -----------------------------------------------------------------------------
 -- Layout processing
@@ -1970,27 +1984,29 @@ getLastTk = P $ \s@(PState { last_tk = last_tk }) -> POk s last_tk
 
 data AlexInput = AI RealSrcLoc StringBuffer
 
-alexInputPrevChar :: AlexInput -> Char
-alexInputPrevChar (AI _ buf) = prevChar buf '\n'
+{-
+Note [Unicode in Alex]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Although newer versions of Alex support unicode, this grammar is processed with
+the old style '--latin1' behaviour. This means that when implementing the
+functions
 
--- backwards compatibility for Alex 2.x
-alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
-alexGetChar inp = case alexGetByte inp of
-                    Nothing    -> Nothing
-                    Just (b,i) -> c `seq` Just (c,i)
-                       where c = chr $ fromIntegral b
+    alexGetByte       :: AlexInput -> Maybe (Word8,AlexInput)
+    alexInputPrevChar :: AlexInput -> Char
 
-alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
-alexGetByte (AI loc s)
-  | atEnd s   = Nothing
-  | otherwise = byte `seq` loc' `seq` s' `seq`
-                --trace (show (ord c)) $
-                Just (byte, (AI loc' s'))
-  where (c,s') = nextChar s
-        loc'   = advanceSrcLoc loc c
-        byte   = fromIntegral $ ord adj_c
+which Alex uses to to take apart our 'AlexInput', we must
 
-        non_graphic     = '\x00'
+  * return a latin1 character in the 'Word8' that 'alexGetByte' expects
+  * return a latin1 character in 'alexInputPrevChar'.
+
+We handle this in 'adjustChar' by squishing entire classes of unicode
+characters into single bytes.
+-}
+
+{-# INLINE adjustChar #-}
+adjustChar :: Char -> Word8
+adjustChar c = fromIntegral $ ord adj_c
+  where non_graphic     = '\x00'
         upper           = '\x01'
         lower           = '\x02'
         digit           = '\x03'
@@ -2035,6 +2051,32 @@ alexGetByte (AI loc s)
                   OtherSymbol           -> symbol
                   Space                 -> space
                   _other                -> non_graphic
+
+-- Getting the previous 'Char' isn't enough here - we need to convert it into
+-- the same format that 'alexGetByte' would have produced.
+--
+-- See Note [Unicode in Alex] and #13986.
+alexInputPrevChar :: AlexInput -> Char
+alexInputPrevChar (AI _ buf) = chr (fromIntegral (adjustChar pc))
+  where pc = prevChar buf '\n'
+
+-- backwards compatibility for Alex 2.x
+alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
+alexGetChar inp = case alexGetByte inp of
+                    Nothing    -> Nothing
+                    Just (b,i) -> c `seq` Just (c,i)
+                       where c = chr $ fromIntegral b
+
+-- See Note [Unicode in Alex]
+alexGetByte :: AlexInput -> Maybe (Word8,AlexInput)
+alexGetByte (AI loc s)
+  | atEnd s   = Nothing
+  | otherwise = byte `seq` loc' `seq` s' `seq`
+                --trace (show (ord c)) $
+                Just (byte, (AI loc' s'))
+  where (c,s') = nextChar s
+        loc'   = advanceSrcLoc loc c
+        byte   = adjustChar c
 
 -- This version does not squash unicode characters, it is used when
 -- lexing strings.
@@ -2178,6 +2220,7 @@ data ExtBits
   | LambdaCaseBit
   | BinaryLiteralsBit
   | NegativeLiteralsBit
+  | HexFloatLiteralsBit
   | TypeApplicationsBit
   | StaticPointersBit
   deriving Enum
@@ -2240,6 +2283,8 @@ binaryLiteralsEnabled :: ExtsBitmap -> Bool
 binaryLiteralsEnabled = xtest BinaryLiteralsBit
 negativeLiteralsEnabled :: ExtsBitmap -> Bool
 negativeLiteralsEnabled = xtest NegativeLiteralsBit
+hexFloatLiteralsEnabled :: ExtsBitmap -> Bool
+hexFloatLiteralsEnabled = xtest HexFloatLiteralsBit
 patternSynonymsEnabled :: ExtsBitmap -> Bool
 patternSynonymsEnabled = xtest PatternSynonymsBit
 typeApplicationEnabled :: ExtsBitmap -> Bool
@@ -2297,6 +2342,7 @@ mkParserFlags flags =
                .|. LambdaCaseBit               `setBitIf` xopt LangExt.LambdaCase               flags
                .|. BinaryLiteralsBit           `setBitIf` xopt LangExt.BinaryLiterals           flags
                .|. NegativeLiteralsBit         `setBitIf` xopt LangExt.NegativeLiterals         flags
+               .|. HexFloatLiteralsBit         `setBitIf` xopt LangExt.HexFloatLiterals         flags
                .|. PatternSynonymsBit          `setBitIf` xopt LangExt.PatternSynonyms          flags
                .|. TypeApplicationsBit         `setBitIf` xopt LangExt.TypeApplications         flags
                .|. StaticPointersBit           `setBitIf` xopt LangExt.StaticPointers           flags

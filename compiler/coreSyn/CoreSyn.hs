@@ -77,7 +77,7 @@ module CoreSyn (
         collectAnnArgs, collectAnnArgsTicks,
 
         -- ** Operations on annotations
-        deAnnotate, deAnnotate', deAnnAlt,
+        deAnnotate, deAnnotate', deAnnAlt, deAnnBind,
         collectAnnBndrs, collectNAnnBndrs,
 
         -- * Orphanhood
@@ -313,16 +313,17 @@ data AltCon
 -- This instance is a bit shady. It can only be used to compare AltCons for
 -- a single type constructor. Fortunately, it seems quite unlikely that we'll
 -- ever need to compare AltCons for different type constructors.
+-- The instance adheres to the order described in [CoreSyn case invariants]
 instance Ord AltCon where
   compare (DataAlt con1) (DataAlt con2) =
     ASSERT( dataConTyCon con1 == dataConTyCon con2 )
     compare (dataConTag con1) (dataConTag con2)
-  compare (DataAlt _) _ = LT
-  compare _ (DataAlt _) = GT
+  compare (DataAlt _) _ = GT
+  compare _ (DataAlt _) = LT
   compare (LitAlt l1) (LitAlt l2) = compare l1 l2
-  compare (LitAlt _) DEFAULT = LT
+  compare (LitAlt _) DEFAULT = GT
   compare DEFAULT DEFAULT = EQ
-  compare DEFAULT _ = GT
+  compare DEFAULT _ = LT
 
 -- | Binding, used for top level bindings in a module and local bindings in a @let@.
 
@@ -2160,15 +2161,15 @@ deAnnotate' (AnnTick tick body)   = Tick tick (deAnnotate body)
 
 deAnnotate' (AnnLet bind body)
   = Let (deAnnBind bind) (deAnnotate body)
-  where
-    deAnnBind (AnnNonRec var rhs) = NonRec var (deAnnotate rhs)
-    deAnnBind (AnnRec pairs) = Rec [(v,deAnnotate rhs) | (v,rhs) <- pairs]
-
 deAnnotate' (AnnCase scrut v t alts)
   = Case (deAnnotate scrut) v t (map deAnnAlt alts)
 
 deAnnAlt :: AnnAlt bndr annot -> Alt bndr
 deAnnAlt (con,args,rhs) = (con,args,deAnnotate rhs)
+
+deAnnBind  :: AnnBind b annot -> Bind b
+deAnnBind (AnnNonRec var rhs) = NonRec var (deAnnotate rhs)
+deAnnBind (AnnRec pairs) = Rec [(v,deAnnotate rhs) | (v,rhs) <- pairs]
 
 -- | As 'collectBinders' but for 'AnnExpr' rather than 'Expr'
 collectAnnBndrs :: AnnExpr bndr annot -> ([bndr], AnnExpr bndr annot)

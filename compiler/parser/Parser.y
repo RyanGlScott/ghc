@@ -1119,12 +1119,8 @@ deriv_strategy_no_via :: { LDerivStrategy GhcPs }
                                        [mj AnnNewtype $1] }
 
 deriv_strategy_via :: { LDerivStrategy GhcPs }
-  : 'via' qtycondoc       {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $2)))
-                                 [mj AnnVia $1] }
-  | 'via' '(' typedoc ')' {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $3)))
-                                 [mj AnnVia $1,mop $2,mcp $4] }
-  | 'via' tuple_type      {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $2)))
-                                 [mj AnnVia $1] }
+  : 'via' btype                 {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $2)))
+                                       [mj AnnVia $1] }
 
 deriv_standalone_strategy :: { Maybe (LDerivStrategy GhcPs) }
   : 'stock'                     {% ajs (Just (sL1 $1 StockStrategy))
@@ -2233,7 +2229,7 @@ decl_no_th :: { LHsDecl GhcPs }
                                         (ann, r) <- checkValDef empty SrcStrict e Nothing $3 ;
                                         -- Depending upon what the pattern looks like we might get either
                                         -- a FunBind or PatBind back from checkValDef. See Note
-                                        -- [Varieties of binding pattern matches]
+                                        -- [FunBind vs PatBind]
                                         case r of {
                                           (FunBind n _ _ _ _) ->
                                                 ams (L l ()) [mj AnnFunId n] >> return () ;
@@ -2247,7 +2243,7 @@ decl_no_th :: { LHsDecl GhcPs }
                                         let { l = comb2 $1 $> };
                                         -- Depending upon what the pattern looks like we might get either
                                         -- a FunBind or PatBind back from checkValDef. See Note
-                                        -- [Varieties of binding pattern matches]
+                                        -- [FunBind vs PatBind]
                                         case r of {
                                           (FunBind n _ _ _ _) ->
                                                 ams (L l ()) (mj AnnFunId n:(fst $2)) >> return () ;

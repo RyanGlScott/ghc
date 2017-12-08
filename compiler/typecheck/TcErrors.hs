@@ -1830,8 +1830,9 @@ mkEqInfoMsg ct ty1 ty2
     tyfun_msg | Just tc1 <- mb_fun1
               , Just tc2 <- mb_fun2
               , tc1 == tc2
+              , not (isInjectiveTyCon tc1 Nominal)
               = text "NB:" <+> quotes (ppr tc1)
-                <+> text "is a type function, and may not be injective"
+                <+> text "is a non-injective type family"
               | otherwise = empty
 
 isUserSkolem :: ReportErrCtxt -> TcTyVar -> Bool
@@ -2373,10 +2374,7 @@ mkDictErr ctxt cts
     -- When simplifying [W] Ord (Set a), we need
     --    [W] Eq a, [W] Ord a
     -- but we really only want to report the latter
-    elim_superclasses cts
-      = filter (\ct -> any (eqType (ctPred ct)) min_preds) cts
-      where
-        min_preds = mkMinimalBySCs (map ctPred cts)
+    elim_superclasses cts = mkMinimalBySCs ctPred cts
 
 mk_dict_err :: ReportErrCtxt -> (Ct, ClsInstLookupResult)
             -> TcM (ReportErrCtxt, SDoc)

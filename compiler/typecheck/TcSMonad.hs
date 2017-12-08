@@ -57,7 +57,7 @@ module TcSMonad (
     getUnsolvedInerts,
     removeInertCts, getPendingScDicts,
     addInertCan, addInertEq, insertFunEq,
-    emitInsoluble, emitWorkNC, emitWork,
+    emitWorkNC, emitWork,
     isImprovable,
 
     -- The Model
@@ -251,8 +251,16 @@ workListSize (WL { wl_eqs = eqs, wl_funeqs = funeqs, wl_deriv = ders, wl_rest = 
   = length eqs + length funeqs + length rest + length ders
 
 workListWantedCount :: WorkList -> Int
+-- Count the things we need to solve
+-- excluding the insolubles (c.f. inert_count)
 workListWantedCount (WL { wl_eqs = eqs, wl_rest = rest })
-  = count isWantedCt eqs + count isWantedCt rest
+  = count isWantedCt eqs + count is_wanted rest
+  where
+    is_wanted ct
+     | CIrredCan { cc_ev = ev, cc_insol = insol } <- ct
+     = not insol && isWanted ev
+     | otherwise
+     = isWantedCt ct
 
 extendWorkListEq :: Ct -> WorkList -> WorkList
 extendWorkListEq ct wl = wl { wl_eqs = ct : wl_eqs wl }
@@ -775,36 +783,38 @@ guarantee that this recursive use will terminate.
 
 Note [Extending the inert equalities]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Theorem [Stability under extension]
-   This is the main theorem!
+Main Theorem [Stability under extension]
    Suppose we have a "work item"
        a -fw-> t
    and an inert generalised substitution S,
-   such that
+   THEN the extended substitution T = S+(a -fw-> t)
+        is an inert generalised substitution
+   PROVIDED
       (T1) S(fw,a) = a     -- LHS of work-item is a fixpoint of S(fw,_)
       (T2) S(fw,t) = t     -- RHS of work-item is a fixpoint of S(fw,_)
       (T3) a not in t      -- No occurs check in the work item
 
-      (K1) for every (a -fs-> s) in S, then not (fw >= fs)
-           Reason: the work item is fully rewritten by S, hence not (fs >= fw)
-                   but if (fw >= fs) then the work item could rewrite
-                   the inert item
+      AND, for every (b -fs-> s) in S:
+           (K0) not (fw >= fs)
+                Reason: suppose we kick out (a -fs-> s),
+                        and add (a -fw-> t) to the inert set.
+                        The latter can't rewrite the former,
+                        so the kick-out achieved nothing
 
-      (K2) for every (b -fs-> s) in S, where b /= a, then
-              (K2a) not (fs >= fs)
-           or (K2b) fs >= fw
-           or (K2c) not (fw >= fs)
-           or (K2d) a not in s
+           OR { (K1) not (a = b)
+                     Reason: if fw >= fs, WF1 says we can't have both
+                             a -fw-> t  and  a -fs-> s
 
-      (K3) See Note [K3: completeness of solving]
-           If (b -fs-> s) is in S with (fw >= fs), then
-        (K3a) If the role of fs is nominal: s /= a
-        (K3b) If the role of fs is representational: EITHER
-                a not in s, OR
-                the path from the top of s to a includes at least one non-newtype
+                AND (K2): guarantees inertness of the new substitution
+                    {  (K2a) not (fs >= fs)
+                    OR (K2b) fs >= fw
+                    OR (K2d) a not in s }
 
-   then the extended substitution T = S+(a -fw-> t)
-   is an inert generalised substitution.
+                AND (K3) See Note [K3: completeness of solving]
+                    { (K3a) If the role of fs is nominal: s /= a
+                      (K3b) If the role of fs is representational:
+                            s is not of form (a t1 .. tn) } }
+
 
 Conditions (T1-T3) are established by the canonicaliser
 Conditions (K1-K3) are established by TcSMonad.kickOutRewritable
@@ -832,11 +842,12 @@ The idea is that
   us to kick out an inert wanted that mentions a, because of (K2a).  This
   is a common case, hence good not to kick out.
 
-* Lemma (L2): if not (fw >= fw), then K1-K3 all hold.
+* Lemma (L2): if not (fw >= fw), then K0 holds and we kick out nothing
   Proof: using Definition [Can-rewrite relation], fw can't rewrite anything
-         and so K1-K3 hold.  Intuitively, since fw can't rewrite anything,
+         and so K0 holds.  Intuitively, since fw can't rewrite anything,
          adding it cannot cause any loops
   This is a common case, because Wanteds cannot rewrite Wanteds.
+  It's used to avoid even looking for constraint to kick out.
 
 * Lemma (L1): The conditions of the Main Theorem imply that there is no
               (a -fs-> t) in S, s.t.  (fs >= fw).
@@ -849,9 +860,9 @@ The idea is that
   - (T3) guarantees (WF2).
 
 * (K2) is about inertness.  Intuitively, any infinite chain T^0(f,t),
-  T^1(f,t), T^2(f,T).... must pass through the new work item infnitely
+  T^1(f,t), T^2(f,T).... must pass through the new work item infinitely
   often, since the substitution without the work item is inert; and must
-  pass through at least one of the triples in S infnitely often.
+  pass through at least one of the triples in S infinitely often.
 
   - (K2a): if not(fs>=fs) then there is no f that fs can rewrite (fs>=f),
     and hence this triple never plays a role in application S(f,a).
@@ -913,26 +924,35 @@ is somewhat accidental.
 
 When considering roles, we also need the second clause (K3b). Consider
 
-  inert-item   a -W/R-> b c
   work-item    c -G/N-> a
+  inert-item   a -W/R-> b c
 
 The work-item doesn't get rewritten by the inert, because (>=) doesn't hold.
-We've satisfied conditions (T1)-(T3) and (K1) and (K2). If all we had were
-condition (K3a), then we would keep the inert around and add the work item.
-But then, consider if we hit the following:
+But we don't kick out the inert item because not (W/R >= W/R).  So we just
+add the work item. But then, consider if we hit the following:
 
-  work-item2   b -G/N-> Id
-
+  work-item    b -G/N-> Id
+  inert-items  a -W/R-> b c
+               c -G/N-> a
 where
-
   newtype Id x = Id x
 
 For similar reasons, if we only had (K3a), we wouldn't kick the
 representational inert out. And then, we'd miss solving the inert, which
-now reduced to reflexivity. The solution here is to kick out representational
-inerts whenever the tyvar of a work item is "exposed", where exposed means
-not under some proper data-type constructor, like [] or Maybe. See
-isTyVarExposed in TcType. This is encoded in (K3b).
+now reduced to reflexivity.
+
+The solution here is to kick out representational inerts whenever the
+tyvar of a work item is "exposed", where exposed means being at the
+head of the top-level application chain (a t1 .. tn).  See
+TcType.isTyVarHead. This is encoded in (K3b).
+
+Beware: if we make this test succeed too often, we kick out too much,
+and the solver might loop.  Consider (Trac #14363)
+  work item:   [G] a ~R f b
+  inert item:  [G] b ~R f a
+In GHC 8.2 the completeness tests more aggressive, and kicked out
+the inert item; but no rewriting happened and there was an infinite
+loop.  All we need is to have the tyvar at the head.
 
 Note [Flavours with roles]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1264,11 +1284,13 @@ shouldSplitWD inert_eqs (CDictCan { cc_tyargs = tys })
     -- NB True: ignore coercions
     -- See Note [Splitting WD constraints]
 
-shouldSplitWD inert_eqs (CTyEqCan { cc_tyvar = tv, cc_rhs = ty })
+shouldSplitWD inert_eqs (CTyEqCan { cc_tyvar = tv, cc_rhs = ty
+                                  , cc_eq_rel = eq_rel })
   =  tv `elemDVarEnv` inert_eqs
-  || anyRewritableTyVar False (`elemDVarEnv` inert_eqs) ty
+  || anyRewritableTyVar False eq_rel (canRewriteTv inert_eqs) ty
   -- NB False: do not ignore casts and coercions
   -- See Note [Splitting WD constraints]
+  where
 
 shouldSplitWD _ _ = False   -- No point in splitting otherwise
 
@@ -1276,9 +1298,17 @@ should_split_match_args :: InertEqs -> [TcType] -> Bool
 -- True if the inert_eqs can rewrite anything in the argument
 -- types, ignoring casts and coercions
 should_split_match_args inert_eqs tys
-  = any (anyRewritableTyVar True (`elemDVarEnv` inert_eqs)) tys
+  = any (anyRewritableTyVar True NomEq (canRewriteTv inert_eqs)) tys
     -- NB True: ignore casts coercions
     -- See Note [Splitting WD constraints]
+
+canRewriteTv :: InertEqs -> EqRel -> TyVar -> Bool
+canRewriteTv inert_eqs eq_rel tv
+  | Just (ct : _) <- lookupDVarEnv inert_eqs tv
+  , CTyEqCan { cc_eq_rel = eq_rel1 } <- ct
+  = eq_rel1 `eqCanRewrite` eq_rel
+  | otherwise
+  = False
 
 isImprovable :: CtEvidence -> Bool
 -- See Note [Do not do improvement for WOnly]
@@ -1390,9 +1420,10 @@ addInertEq ct
 
        ; ics <- getInertCans
 
-       ; ct@(CTyEqCan { cc_tyvar = tv, cc_ev = ev }) <- maybeEmitShadow ics ct
+       ; ct@(CTyEqCan { cc_tyvar = tv, cc_ev = ev, cc_eq_rel = eq_rel })
+             <- maybeEmitShadow ics ct
 
-       ; (_, ics1) <- kickOutRewritable (ctEvFlavourRole ev) tv ics
+       ; (_, ics1) <- kickOutRewritable (ctEvFlavour ev, eq_rel) tv ics
 
        ; let ics2 = ics1 { inert_eqs   = addTyEq (inert_eqs ics1) tv ct
                          , inert_count = bumpUnsolvedCount ev (inert_count ics1) }
@@ -1416,14 +1447,12 @@ add_item :: InertCans -> Ct -> InertCans
 add_item ics item@(CFunEqCan { cc_fun = tc, cc_tyargs = tys })
   = ics { inert_funeqs = insertFunEq (inert_funeqs ics) tc tys item }
 
-add_item ics item@(CIrredCan { cc_ev = ev })
-  = ics { inert_irreds = inert_irreds ics `Bag.snocBag` item
-        , inert_count = bumpUnsolvedCount ev (inert_count ics) }
-       -- The 'False' is because the irreducible constraint might later instantiate
-       -- to an equality.
-       -- But since we try to simplify first, if there's a constraint function FC with
-       --    type instance FC Int = Show
-       -- we'll reduce a constraint (FC Int a) to Show a, and never add an inert irreducible
+add_item ics@(IC { inert_irreds = irreds, inert_count = count })
+         item@(CIrredCan { cc_ev = ev, cc_insol = insoluble })
+  = ics { inert_irreds = irreds `Bag.snocBag` item
+        , inert_count  = if insoluble
+                         then count  -- inert_count does not include insolubles
+                         else bumpUnsolvedCount ev count }
 
 add_item ics item@(CDictCan { cc_ev = ev, cc_class = cls, cc_tyargs = tys })
   = ics { inert_dicts = addDict (inert_dicts ics) cls tys item
@@ -1504,6 +1533,15 @@ kick_out_rewritable new_fr new_tv ics@(IC { inert_eqs      = tv_eqs
       -- Of course we must kick out irreducibles like (c a), in case
       -- we can rewrite 'c' to something more useful
 
+    (_, new_role) = new_fr
+
+    fr_can_rewrite_ty :: EqRel -> Type -> Bool
+    fr_can_rewrite_ty role ty = anyRewritableTyVar False role
+                                                   fr_can_rewrite_tv ty
+    fr_can_rewrite_tv :: EqRel -> TyVar -> Bool
+    fr_can_rewrite_tv role tv = new_role `eqCanRewrite` role
+                             && tv == new_tv
+
     fr_may_rewrite :: CtFlavourRole -> Bool
     fr_may_rewrite fs = new_fr `eqMayRewriteFR` fs
         -- Can the new item rewrite the inert item?
@@ -1511,9 +1549,9 @@ kick_out_rewritable new_fr new_tv ics@(IC { inert_eqs      = tv_eqs
     kick_out_ct :: Ct -> Bool
     -- Kick it out if the new CTyEqCan can rewrite the inert one
     -- See Note [kickOutRewritable]
-    kick_out_ct ct | let ev = ctEvidence ct
-                   = fr_may_rewrite (ctEvFlavourRole ev)
-                   && anyRewritableTyVar False (== new_tv) (ctEvPred ev)
+    kick_out_ct ct | let fs@(_,role) = ctFlavourRole ct
+                   = fr_may_rewrite fs
+                   && fr_can_rewrite_ty role (ctPred ct)
                   -- False: ignore casts and coercions
                   -- NB: this includes the fsk of a CFunEqCan.  It can't
                   --     actually be rewritten, but we need to kick it out
@@ -1527,33 +1565,34 @@ kick_out_rewritable new_fr new_tv ics@(IC { inert_eqs      = tv_eqs
                                []      -> acc_in
                                (eq1:_) -> extendDVarEnv acc_in (cc_tyvar eq1) eqs_in)
       where
-        (eqs_in, eqs_out) = partition keep_eq eqs
+        (eqs_out, eqs_in) = partition kick_out_eq eqs
 
     -- Implements criteria K1-K3 in Note [Extending the inert equalities]
-    keep_eq (CTyEqCan { cc_tyvar = tv, cc_rhs = rhs_ty, cc_ev = ev
-                      , cc_eq_rel = eq_rel })
-      | tv == new_tv
-      = not (fr_may_rewrite fs)  -- (K1)
+    kick_out_eq (CTyEqCan { cc_tyvar = tv, cc_rhs = rhs_ty
+                          , cc_ev = ev, cc_eq_rel = eq_rel })
+      | not (fr_may_rewrite fs)
+      = False  -- Keep it in the inert set if the new thing can't rewrite it
 
-      | otherwise
-      = check_k2 && check_k3
+      -- Below here (fr_may_rewrite fs) is True
+      | tv == new_tv              = True        -- (K1)
+      | kick_out_for_inertness    = True
+      | kick_out_for_completeness = True
+      | otherwise                 = False
+
       where
-        fs = ctEvFlavourRole ev
-        check_k2 = not (fs  `eqMayRewriteFR` fs)                   -- (K2a)
-                ||     (fs  `eqMayRewriteFR` new_fr)               -- (K2b)
-                || not (fr_may_rewrite  fs)                        -- (K2c)
-                || not (new_tv `elemVarSet` tyCoVarsOfType rhs_ty) -- (K2d)
+        fs = (ctEvFlavour ev, eq_rel)
+        kick_out_for_inertness
+          =        (fs `eqMayRewriteFR` fs)       -- (K2a)
+            && not (fs `eqMayRewriteFR` new_fr)   -- (K2b)
+            && fr_can_rewrite_ty eq_rel rhs_ty    -- (K2d)
+            -- (K2c) is guaranteed by the first guard of keep_eq
 
-        check_k3
-          | fr_may_rewrite fs
+        kick_out_for_completeness
           = case eq_rel of
-              NomEq  -> not (rhs_ty `eqType` mkTyVarTy new_tv)
-              ReprEq -> not (isTyVarExposed new_tv rhs_ty)
+              NomEq  -> rhs_ty `eqType` mkTyVarTy new_tv
+              ReprEq -> isTyVarHead new_tv rhs_ty
 
-          | otherwise
-          = True
-
-    keep_eq ct = pprPanic "keep_eq" (ppr ct)
+    kick_out_eq ct = pprPanic "keep_eq" (ppr ct)
 
 kickOutAfterUnification :: TcTyVar -> TcS Int
 kickOutAfterUnification new_tv
@@ -2664,21 +2703,6 @@ emitWork cts
   = do { traceTcS "Emitting fresh work" (vcat (map ppr cts))
        ; updWorkListTcS (extendWorkListCts cts) }
 
-emitInsoluble :: Ct -> TcS ()
--- Emits a non-canonical constraint that will stand for a frozen error in the inerts.
-emitInsoluble ct
-  = do { traceTcS "Emit insoluble" (ppr ct $$ pprCtLoc (ctLoc ct))
-       ; updInertTcS add_insol }
-  where
-    this_pred = ctPred ct
-    add_insol is@(IS { inert_cans = ics@(IC { inert_irreds = old_irreds }) })
-      | drop_it   = is
-      | otherwise = is { inert_cans = ics { inert_irreds = old_irreds `snocCts` ct } }
-      where
-        drop_it = isDroppableDerivedCt ct &&
-                  anyBag (tcEqType this_pred . ctPred) old_irreds
-             -- See Note [Do not add duplicate derived insolubles]
-
 newTcRef :: a -> TcS (TcRef a)
 newTcRef x = wrapTcS (TcM.newTcRef x)
 
@@ -2820,56 +2844,6 @@ zonkSimples cts = wrapTcS (TcM.zonkSimples cts)
 zonkWC :: WantedConstraints -> TcS WantedConstraints
 zonkWC wc = wrapTcS (TcM.zonkWC wc)
 
-{-
-Note [Do not add duplicate derived insolubles]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In general we *must* add an insoluble (Int ~ Bool) even if there is
-one such there already, because they may come from distinct call
-sites.  Not only do we want an error message for each, but with
--fdefer-type-errors we must generate evidence for each.  But for
-*derived* insolubles, we only want to report each one once.  Why?
-
-(a) A constraint (C r s t) where r -> s, say, may generate the same fundep
-    equality many times, as the original constraint is successively rewritten.
-
-(b) Ditto the successive iterations of the main solver itself, as it traverses
-    the constraint tree. See example below.
-
-Also for *given* insolubles we may get repeated errors, as we
-repeatedly traverse the constraint tree.  These are relatively rare
-anyway, so removing duplicates seems ok.  (Alternatively we could take
-the SrcLoc into account.)
-
-Note that the test does not need to be particularly efficient because
-it is only used if the program has a type error anyway.
-
-Example of (b): assume a top-level class and instance declaration:
-
-  class D a b | a -> b
-  instance D [a] [a]
-
-Assume we have started with an implication:
-
-  forall c. Eq c => { wc_simple = D [c] c [W] }
-
-which we have simplified to:
-
-  forall c. Eq c => { wc_simple = D [c] c [W]
-                                  (c ~ [c]) [D] }
-
-For some reason, e.g. because we floated an equality somewhere else,
-we might try to re-solve this implication. If we do not do a
-dropDerivedWC, then we will end up trying to solve the following
-constraints the second time:
-
-  (D [c] c) [W]
-  (c ~ [c]) [D]
-
-which will result in two Deriveds to end up in the insoluble set:
-
-  wc_simple   = D [c] c [W]
-               (c ~ [c]) [D], (c ~ [c]) [D]
--}
 
 {- *********************************************************************
 *                                                                      *
