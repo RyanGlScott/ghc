@@ -618,6 +618,7 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
        ; (cls_tvs, theta, cls, inst_tys) <-
            tcHsClsInstType TcType.InstDeclCtxt deriv_ty
        ; (strat_tvs, mb_deriv_strat') <-
+           tcExtendTyVarEnv cls_tvs $
            maybe ([], Nothing) (fmap Just) <$>
            traverse tcDerivStrategy mb_deriv_strat
        ; traceTc "Standalone deriving (post-typechecking)" $ vcat
