@@ -11,9 +11,9 @@ module RnTypes (
         -- Type related stuff
         rnHsType, rnLHsType, rnLHsTypes, rnContext,
         rnHsKind, rnLHsKind,
-        rnHsSigType, rnHsWcType,
+        rnHsSigType, rnHsSigTypeAndThen, rnHsWcType,
         rnHsSigWcType, rnHsSigWcTypeScoped,
-        rnLHsInstType,
+        rnLHsInstType, rnLHsInstTypeAndThen,
         newTyVarNameRn, collectAnonWildCards,
         rnConDeclFields,
         rnLTyVar,
@@ -261,7 +261,7 @@ of the HsWildCardBndrs structure, and we are done.
 
 *********************************************************
 *                                                       *
-           HsSigtype (i.e. no wildcards)
+           HsSigType (i.e. no wildcards)
 *                                                       *
 ****************************************************** -}
 
@@ -269,12 +269,25 @@ rnHsSigType :: HsDocContext -> LHsSigType GhcPs
             -> RnM (LHsSigType GhcRn, FreeVars)
 -- Used for source-language type signatures
 -- that cannot have wildcards
-rnHsSigType ctx (HsIB { hsib_body = hs_ty })
+rnHsSigType ctx hs_sig_ty
+  = do { (hs_sig_ty', _, fvs) <- rnHsSigTypeAndThen ctx hs_sig_ty
+                                                    (pure ((), emptyFVs))
+       ; pure (hs_sig_ty', fvs) }
+
+rnHsSigTypeAndThen
+  :: HsDocContext -> LHsSigType GhcPs -> RnM (a, FreeVars)
+  -> RnM (LHsSigType GhcRn, a, FreeVars)
+rnHsSigTypeAndThen ctx (HsIB { hsib_body = hs_ty }) thing_inside
   = do { traceRn "rnHsSigType" (ppr hs_ty)
        ; vars <- extractFilteredRdrTyVarsDups hs_ty
-       ; rnImplicitBndrs (not (isLHsForAllTy hs_ty)) ctx vars $ \ vars ->
-    do { (body', fvs) <- rnLHsType ctx hs_ty
-       ; return ( mk_implicit_bndrs vars body' fvs, fvs ) } }
+       ; ((hs_sig_ty, thing), fvs)
+           <- rnImplicitBndrs (not (isLHsForAllTy hs_ty))
+                              ctx hs_ty vars $ \ vars ->
+              do { (body', fvs1) <- rnLHsType ctx hs_ty
+                 ; (thing, fvs2) <- thing_inside
+                 ; pure ( (mk_implicit_bndrs vars body' fvs1, thing)
+                        , fvs1 `plusFV` fvs2 ) }
+       ; pure (hs_sig_ty, thing, fvs) }
 
 rnImplicitBndrs :: Bool    -- True <=> bring into scope any free type variables
                            -- E.g.  f :: forall a. a->b
@@ -327,19 +340,27 @@ rnLHsInstType :: SDoc -> LHsSigType GhcPs -> RnM (LHsSigType GhcRn, FreeVars)
 -- Rename the type in an instance or standalone deriving decl
 -- The 'doc_str' is "an instance declaration" or "a VECTORISE pragma"
 rnLHsInstType doc_str inst_ty
+  = do { (inst_ty', _, fvs) <- rnLHsInstTypeAndThen doc_str inst_ty
+                                                    (pure ((), emptyFVs))
+       ; pure (inst_ty', fvs) }
+
+rnLHsInstTypeAndThen
+  :: SDoc -> LHsSigType GhcPs -> RnM (a, FreeVars)
+  -> RnM (LHsSigType GhcRn, a, FreeVars)
+rnLHsInstTypeAndThen doc_str inst_ty thing_inside
   | Just cls <- getLHsInstDeclClass_maybe inst_ty
   , isTcOcc (rdrNameOcc (unLoc cls))
          -- The guards check that the instance type looks like
          --   blah => C ty1 .. tyn
   = do { let full_doc = doc_str <+> text "for" <+> quotes (ppr cls)
-       ; rnHsSigType (GenericCtx full_doc) inst_ty }
+       ; rnHsSigTypeAndThen (GenericCtx full_doc) inst_ty thing_inside }
 
   | otherwise  -- The instance is malformed, but we'd still like
                -- to make progress rather than failing outright, so
                -- we report more errors.  So we rename it anyway.
   = do { addErrAt (getLoc (hsSigType inst_ty)) $
          text "Malformed instance:" <+> ppr inst_ty
-       ; rnHsSigType (GenericCtx doc_str) inst_ty }
+       ; rnHsSigTypeAndThen (GenericCtx doc_str) inst_ty thing_inside }
 
 mk_implicit_bndrs :: [Name]  -- implicitly bound
                   -> a           -- payload
