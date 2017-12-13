@@ -942,10 +942,12 @@ rnSrcDerivDecl :: DerivDecl GhcPs -> RnM (DerivDecl GhcRn, FreeVars)
 rnSrcDerivDecl (DerivDecl ty deriv_strat overlap)
   = do { standalone_deriv_ok <- xoptM LangExt.StandaloneDeriving
        ; unless standalone_deriv_ok (addErr standaloneDerivErr)
-       ; (deriv_strat', fvs1) <-
-           mapMaybeFvRn (rnLDerivStrategy DerivDeclCtx) deriv_strat
-       ; (ty', fvs2) <- rnHsSigWcType DerivDeclCtx ty
-       ; return (DerivDecl ty' deriv_strat' overlap, fvs1 `plusFV` fvs2) }
+       ; (ty', deriv_strat', fvs)
+           <- rnLHsInstTypeAndThen ctx_text ty $
+              mapMaybeFvRn (rnLDerivStrategy DerivDeclCtx) deriv_strat
+       ; return (DerivDecl ty' deriv_strat' overlap, fvs) }
+  where
+    ctx_text = text "a deriving declaration"
 
 standaloneDerivErr :: SDoc
 standaloneDerivErr

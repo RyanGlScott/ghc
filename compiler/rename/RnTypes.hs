@@ -11,9 +11,9 @@ module RnTypes (
         -- Type related stuff
         rnHsType, rnLHsType, rnLHsTypes, rnContext,
         rnHsKind, rnLHsKind,
-        rnHsSigType, rnHsWcType,
+        rnHsSigType, rnHsSigTypeAndThen, rnHsWcType,
         rnHsSigWcType, rnHsSigWcTypeScoped,
-        rnLHsInstType,
+        rnLHsInstType, rnLHsInstTypeAndThen,
         newTyVarNameRn, collectAnonWildCards,
         rnConDeclFields,
         rnLTyVar,
@@ -281,7 +281,7 @@ of the HsWildCardBndrs structure, and we are done.
 
 *********************************************************
 *                                                       *
-           HsSigtype (i.e. no wildcards)
+           HsSigType (i.e. no wildcards)
 *                                                       *
 ****************************************************** -}
 
@@ -289,12 +289,25 @@ rnHsSigType :: HsDocContext -> LHsSigType GhcPs
             -> RnM (LHsSigType GhcRn, FreeVars)
 -- Used for source-language type signatures
 -- that cannot have wildcards
-rnHsSigType ctx (HsIB { hsib_body = hs_ty })
+rnHsSigType ctx hs_sig_ty
+  = do { (hs_sig_ty', _, fvs) <- rnHsSigTypeAndThen ctx hs_sig_ty
+                                                    (pure ((), emptyFVs))
+       ; pure (hs_sig_ty', fvs) }
+
+rnHsSigTypeAndThen
+  :: HsDocContext -> LHsSigType GhcPs -> RnM (a, FreeVars)
+  -> RnM (LHsSigType GhcRn, a, FreeVars)
+rnHsSigTypeAndThen ctx (HsIB { hsib_body = hs_ty }) thing_inside
   = do { traceRn "rnHsSigType" (ppr hs_ty)
        ; vars <- extractFilteredRdrTyVarsDups hs_ty
-       ; rnImplicitBndrs (not (isLHsForAllTy hs_ty)) ctx vars $ \ vars ->
-    do { (body', fvs) <- rnLHsType ctx hs_ty
-       ; return ( mk_implicit_bndrs vars body' fvs, fvs ) } }
+       ; ((hs_sig_ty, thing), fvs)
+           <- rnImplicitBndrs (not (isLHsForAllTy hs_ty))
+                              ctx hs_ty vars $ \ vars ->
+              do { (body', fvs1) <- rnLHsType ctx hs_ty
+                 ; (thing, fvs2) <- thing_inside
+                 ; pure ( (mk_implicit_bndrs vars body' fvs1, thing)
+                        , fvs1 `plusFV` fvs2 ) }
+       ; pure (hs_sig_ty, thing, fvs) }
 
 rnImplicitBndrs :: Bool    -- True <=> bring into scope any free type variables
                            -- E.g.  f :: forall a. a->b
