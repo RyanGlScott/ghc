@@ -301,8 +301,7 @@ rnHsSigTypeAndThen ctx (HsIB { hsib_body = hs_ty }) thing_inside
   = do { traceRn "rnHsSigType" (ppr hs_ty)
        ; vars <- extractFilteredRdrTyVarsDups hs_ty
        ; ((hs_sig_ty, thing), fvs)
-           <- rnImplicitBndrs (not (isLHsForAllTy hs_ty))
-                              ctx hs_ty vars $ \ vars ->
+           <- rnImplicitBndrs (not (isLHsForAllTy hs_ty)) ctx vars $ \ vars ->
               do { (body', fvs1) <- rnLHsType ctx hs_ty
                  ; (thing, fvs2) <- thing_inside
                  ; pure ( (mk_implicit_bndrs vars body' fvs1, thing)

@@ -52,7 +52,7 @@ import NameEnv
 import Avail
 import Outputable
 import Bag
-import BasicTypes       ( DerivStrategy, RuleName, pprRuleName )
+import BasicTypes       ( RuleName, pprRuleName )
 import FastString
 import SrcLoc
 import DynFlags
