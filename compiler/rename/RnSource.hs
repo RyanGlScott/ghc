@@ -1668,7 +1668,14 @@ rnLHsDerivingClause doc
 rnLDerivStrategy :: HsDocContext -> LDerivStrategy GhcPs
                  -> RnM (LDerivStrategy GhcRn, FreeVars)
 rnLDerivStrategy doc (L loc ds)
-  = do { unlessXOptM LangExt.DerivingStrategies $
+  = do { let extNeeded :: LangExt.Extension
+             extNeeded 
+               | ViaStrategy{} <- ds
+               = LangExt.DerivingVia
+               | otherwise
+               = LangExt.DerivingStrategies
+
+       ; unlessXOptM extNeeded $
            failWith $ illegalDerivStrategyErr ds
        ; case ds of
            StockStrategy    -> pure (L loc StockStrategy,    emptyFVs)
@@ -1685,7 +1692,15 @@ badGadtStupidTheta _
 illegalDerivStrategyErr :: DerivStrategy GhcPs -> SDoc
 illegalDerivStrategyErr ds
   = vcat [ text "Illegal deriving strategy" <> colon <+> derivStrategyName ds
-         , text "Use DerivingStrategies to enable this extension" ]
+         , text enableStrategy ]
+
+  where 
+    enableStrategy :: String
+    enableStrategy 
+      | ViaStrategy{} <- ds
+      = "Use DerivingVia to enable this extension"
+      | otherwise
+      = "Use DerivingStrategies to enable this extension"
 
 multipleDerivClausesErr :: SDoc
 multipleDerivClausesErr
