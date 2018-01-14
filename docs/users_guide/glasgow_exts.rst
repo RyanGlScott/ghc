@@ -3903,7 +3903,7 @@ causes the generated code to be ill-typed.
 
 As a general rule, if a data type has a derived ``Functor`` instance and its
 last type parameter occurs on the right-hand side of the data declaration, then
-either it must (1) occur bare (e.g., ``newtype Id a = a``), or (2) occur as the
+either it must (1) occur bare (e.g., ``newtype Id a = Id a``), or (2) occur as the
 last argument of a type constructor (as in ``Right`` above).
 
 There are two exceptions to this rule:
@@ -4944,6 +4944,121 @@ In that case, GHC chooses the strategy as follows:
    user is warned about the ambiguity. The warning can be avoided by explicitly
    stating the desired deriving strategy.
 
+.. _deriving-via:
+
+Deriving via
+------------
+
+.. extension:: DerivingVia
+    :shortdesc: Enable deriving instances ``via`` types of the same runtime representation.
+        Implies :extension:`DerivingStrategies`.
+
+    :implies: :extension:`DerivingStrategies`
+
+    :since: 8.4.1
+
+    This allows ``deriving`` a class instance for a type by specifying
+another type of equal runtime representation (such that there exists a
+``Coercible`` instance between the two: see :ref:`coercible`) that is
+already an instance of the that class.
+
+:extension:`DerivingVia` is indicated by ``deriving`` ⟨class⟩ ``via``
+⟨other type⟩: ::
+
+    {-# LANGUAGE DerivingVia #-}
+
+    import Numeric
+
+    newtype Hex a = Hex a
+
+    instance (Integral a, Show a) => Show (Hex a) where
+      show (Hex a) = "0x" ++ showHex a ""
+
+    newtype Unicode = U Int
+      deriving Show
+        via (Hex Int)
+
+    -- >>> euroSign
+    -- 0x20ac
+    euroSign :: Unicode
+    euroSign = U 0x20ac
+
+generating the instance ::
+
+    instance Show Unicode where
+      show :: Unicode -> String
+      show = Data.Coerce.coerce
+        @(Hex Int -> String)
+        @(Unicode -> String)
+        show
+
+This extension generalizes :extension:`GeneralizedNewtypeDeriving`. To
+derive ``Num Unicode`` with GND (``deriving newtype Num``) it must
+reuse the ``Num Int`` instance — with ``DerivingVia`` we explicitly
+specify the representation type ``Int``: ::
+
+    newtype Unicode = U Int
+      deriving Num
+        via Int
+
+      deriving Show
+        via (Hex Int)
+
+    euroSign :: Unicode
+    euroSign = 0x20ac
+
+Code duplication is common in instance declarations. A familiar
+pattern is lifting operations over an ``Applicative`` functor. Can we
+make that pattern into an instance? To lift ``Semigroup``, ``Monoid``
+would require instances of any applied type ``f a`` which overlaps
+with all other such instances: ::
+
+    instance (Applicative f, Semigroup a) => Semigroup (f a) ..
+    instance (Applicative f, Monoid    a) => Monoid    (f a) ..
+
+Instead we attach this boilerplate as an instance of a ``newtype App``
+(where ``App f a`` and ``f a`` are represented the same in memory) ::
+
+    {-# LANGUAGE DerivingVia, DeriveFunctor, GeneralizedNewtypeDeriving #-}
+
+    import Control.Applicative
+
+    newtype App f a = App (f a) deriving newtype (Functor, Applicative)
+
+    instance (Applicative f, Semigroup a) => Semigroup (App f a) where
+      (<>) = liftA2 (<>)
+
+    instance (Applicative f, Monoid a) => Monoid (App f a) where
+      mempty = pure mempty
+
+    data Pair a = MkPair a a
+      deriving stock
+        Functor
+
+      deriving (Semigroup, Monoid)
+        via (App Pair a)
+
+    instance Applicative Pair where
+      pure a = MkPair a a
+
+      MkPair f g <*> MkPair a b = MkPair (f a) (g b)
+
+Important to note: The ⟨other type⟩ following ``via`` does not have to
+be a ``newtype``, the only restriction is that it is coercible to the
+target type. This means there can be arbitrary nesting of ``newtypes``
+::
+
+    newtype Kleisli m a b = (a -> m b)
+      deriving (Semigroup, Monoid)
+        via (a -> App m b)
+
+Here we make use of the ``Monoid ((->) a)`` instance. If that instance
+did not exist (or if the instance wasn't what we wanted) we can
+override it with a second ``App`` ::
+
+    newtype Kleisli m a b = (a -> m b)
+      deriving (Semigroup, Monoid)
+        via (App ((->) a) (App m b))
 
 .. _pattern-synonyms:
 
