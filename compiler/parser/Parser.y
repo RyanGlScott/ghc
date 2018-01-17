@@ -1890,7 +1890,14 @@ atype :: { LHsType GhcPs }
                                                     (sLL $1 $> $ HsRecTy $2))
                                                         -- Constructor sigs only
                                                  [moc $1,mcc $3] }
-        | tuple_type                     { $1 }
+        | '(' ')'                        {% ams (sLL $1 $> $ HsTupleTy
+                                                    HsBoxedOrConstraintTuple [])
+                                                [mop $1,mcp $2] }
+        | '(' ctype ',' comma_types1 ')' {% addAnnotation (gl $2) AnnComma
+                                                          (gl $3) >>
+                                            ams (sLL $1 $> $ HsTupleTy
+                                             HsBoxedOrConstraintTuple ($2 : $4))
+                                                [mop $1,mcp $5] }
         | '(#' '#)'                   {% ams (sLL $1 $> $ HsTupleTy HsUnboxedTuple [])
                                              [mo $1,mc $2] }
         | '(#' comma_types1 '#)'      {% ams (sLL $1 $> $ HsTupleTy HsUnboxedTuple $2)
@@ -1934,16 +1941,6 @@ atype :: { LHsType GhcPs }
         | STRING               { sLL $1 $> $ HsTyLit $ HsStrTy (getSTRINGs $1)
                                                                (getSTRING  $1) }
         | '_'                  { sL1 $1 $ mkAnonWildCardTy }
-
-tuple_type :: { LHsType GhcPs }
-        : '(' ')'                        {% ams (sLL $1 $> $ HsTupleTy
-                                                    HsBoxedOrConstraintTuple [])
-                                                [mop $1,mcp $2] }
-        | '(' ctype ',' comma_types1 ')' {% addAnnotation (gl $2) AnnComma
-                                                          (gl $3) >>
-                                            ams (sLL $1 $> $ HsTupleTy
-                                             HsBoxedOrConstraintTuple ($2 : $4))
-                                                [mop $1,mcp $5] }
 
 -- An inst_type is what occurs in the head of an instance decl
 --      e.g.  (Foo a, Gaz b) => Wibble a b
