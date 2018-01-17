@@ -264,17 +264,14 @@ tcHsDeriv hs_ty
            Just (cls, tys) -> return (tvs, cls, tys, args)
            Nothing -> failWithTc (text "Illegal deriving item" <+> quotes (ppr hs_ty)) }
 
-tcDerivStrategy :: DerivStrategy GhcRn
-                   -- TODO RGS: Explain what these type variables are
-                -> TcM ([TyVar], DerivStrategyPostTc)
-tcDerivStrategy StockStrategy    = pure ([], StockStrategy)
-tcDerivStrategy AnyclassStrategy = pure ([], AnyclassStrategy)
-tcDerivStrategy NewtypeStrategy  = pure ([], NewtypeStrategy)
-tcDerivStrategy (ViaStrategy ty) = do
-  cls_kind <- newMetaKindVar
-  ty' <- checkNoErrs $ tc_hs_sig_type_and_gen ty cls_kind
-  let (tvs, pred) = splitForAllTys ty'
-  pure (tvs, ViaStrategy pred)
+tcDerivStrategy :: DerivStrategy GhcRn -> Kind
+                -> TcM DerivStrategyPostTc
+tcDerivStrategy StockStrategy    _ = pure StockStrategy
+tcDerivStrategy AnyclassStrategy _ = pure AnyclassStrategy
+tcDerivStrategy NewtypeStrategy  _ = pure NewtypeStrategy
+tcDerivStrategy (ViaStrategy ty) kind = do
+  ViaStrategy <$> (checkNoErrs $ solveEqualities
+                               $ tc_lhs_type typeLevelMode ty kind)
 
 tcHsClsInstType :: UserTypeCtxt    -- InstDeclCtxt or SpecInstCtxt
                 -> LHsSigType GhcRn

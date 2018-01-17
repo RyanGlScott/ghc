@@ -612,28 +612,26 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
     addErrCtxt (standaloneCtxt deriv_ty)  $
     do { traceTc "Standalone deriving decl for" (ppr deriv_ty)
        ; let mb_deriv_strat = fmap unLoc mbl_deriv_strat
-       ; traceTc "Standalone deriving (pre-typechecking)" $
+       ; traceTc "Deriving strategy (standalone deriving)" $
            vcat [ text "mb_deriv_strat" <+> ppr mb_deriv_strat
                 , text "deriv_ty"       <+> ppr deriv_ty ]
-       ; (cls_tvs, theta, cls, inst_tys) <-
+       ; (tvs, theta, cls, inst_tys) <-
            tcHsClsInstType TcType.InstDeclCtxt deriv_ty
-       ; (strat_tvs, mb_deriv_strat') <-
-           tcExtendTyVarEnv cls_tvs $
-           maybe ([], Nothing) (fmap Just) <$>
-           traverse tcDerivStrategy mb_deriv_strat
-       ; traceTc "Standalone deriving (post-typechecking)" $ vcat
-              [ text "cls_tvs:" <+> ppr cls_tvs
+       ; let cls_tys      = take (length inst_tys - 1) inst_tys
+             inst_ty      = last inst_tys
+             inst_ty_kind = typeKind inst_ty
+       ; mb_deriv_strat' <-
+           tcExtendTyVarEnv tvs $
+           traverse (`tcDerivStrategy` inst_ty_kind) mb_deriv_strat
+       ; traceTc "Standalone deriving;" $ vcat
+              [ text "tvs:" <+> ppr tvs
               , text "theta:" <+> ppr theta
               , text "cls:" <+> ppr cls
               , text "tys:" <+> ppr inst_tys
-              , text "strat_tvs:" <+> ppr strat_tvs
-              , text "mb_deriv_strat:" <+> ppr mb_deriv_strat' ]
+              , text "mb_deriv_strat':" <+> ppr mb_deriv_strat' ]
                 -- C.f. TcInstDcls.tcLocalInstDecl1
        ; checkTc (not (null inst_tys)) derivingNullaryErr
 
-       ; let tvs = cls_tvs `chkAppend` strat_tvs
-             cls_tys = take (length inst_tys - 1) inst_tys
-             inst_ty = last inst_tys
        ; traceTc "Standalone deriving:" $ vcat
               [ text "class:" <+> ppr cls
               , text "class types:" <+> ppr cls_tys
@@ -679,8 +677,9 @@ deriveTyData :: [TyVar] -> TyCon -> [Type]   -- LHS of data or data instance
 -- a no-op nowadays.
 deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
   = setSrcSpan (getLoc (hsSigType deriv_pred)) $  -- Use loc of the 'deriving' item
-    do  { (deriv_tvs, cls, cls_tys, cls_arg_kinds, _strat_tvs, mb_deriv_strat')
+    do  { (deriv_tvs, cls, cls_tys, cls_arg_kinds)
                 <- tcExtendTyVarEnv tvs $ do
+                   tcHsDeriv deriv_pred
                 -- Deriving preds may (now) mention
                 -- the type variables for the type constructor, hence tcExtendTyVarenv
                 -- The "deriv_pred" is a LHsType to take account of the fact that for
@@ -689,13 +688,6 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
                 -- Typeable is special, because Typeable :: forall k. k -> Constraint
                 -- so the argument kind 'k' is not decomposable by splitKindFunTys
                 -- as is the case for all other derivable type classes
-                     (deriv_tvs, cls, cls_tys, cls_arg_kinds)
-                       <- tcHsDeriv deriv_pred
-                     (strat_tvs, mb_deriv_strat')
-                       <- maybe ([], Nothing) (fmap Just) <$>
-                          traverse tcDerivStrategy mb_deriv_strat
-                     pure ( deriv_tvs, cls, cls_tys, cls_arg_kinds
-                          , strat_tvs, mb_deriv_strat' )
 
         ; when (cls_arg_kinds `lengthIsNot` 1) $
             failWithTc (nonUnaryErr deriv_pred)
@@ -740,19 +732,11 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
               final_cls_tys   = substTys subst cls_tys
               tkvs            = tyCoVarsOfTypesWellScoped $
                                 final_cls_tys ++ final_tc_args
+              final_inst_ty_kind = typeKind (mkTyConApp tc final_tc_args)
 
-        ; case mb_deriv_strat' of
-            Just (ViaStrategy via_ty) -> do
-              let via_kind = typeKind via_ty
-                  -- TODO RGS: It's not really "final", is it?
-                  final_inst_ty_kind = typeKind (mkTyConApp tc final_tc_args)
-                  via_match = tcUnifyTy final_inst_ty_kind via_kind
-
-              checkTc (isJust via_match)
-                      (derivingViaKindErr cls final_inst_ty_kind
-                                          via_ty via_kind)
-              -- TODO RGS: Actually apply this substitution
-            _ -> pure ()
+        ; mb_deriv_strat' <-
+            tcExtendTyVarEnv tkvs $
+            traverse (`tcDerivStrategy` final_inst_ty_kind) mb_deriv_strat
 
         ; traceTc "Deriving strategy (deriving clause)" $
             vcat [ppr mb_deriv_strat', ppr deriv_pred]
@@ -1921,17 +1905,6 @@ derivingKindErr tc cls cls_tys cls_kind enough_args
     gen1_suggestion | cls `hasKey` gen1ClassKey && enough_args
                     = text "(Perhaps you intended to use PolyKinds)"
                     | otherwise = Outputable.empty
-
--- TODO: Perhaps we should rename derivingKindErr now that we have multiple
--- ways to trigger kind errors when deriving
-derivingViaKindErr :: Class -> Kind -> Type -> Kind -> MsgDoc
-derivingViaKindErr cls cls_kind via_ty via_kind
-  = hang (text "Cannot derive instance via" <+> quotes (pprType via_ty))
-       2 (text "Class" <+> quotes (ppr cls)
-               <+> text "expects an argument of kind"
-               <+> quotes (pprKind cls_kind) <> char ','
-      $+$ text "but" <+> quotes (pprType via_ty)
-               <+> text "has kind" <+> quotes (pprKind via_kind))
 
 derivingEtaErr :: Class -> [Type] -> Type -> MsgDoc
 derivingEtaErr cls cls_tys inst_ty
