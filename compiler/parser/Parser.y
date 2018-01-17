@@ -1119,12 +1119,12 @@ deriv_strategy_no_via :: { LDerivStrategy GhcPs }
                                        [mj AnnNewtype $1] }
 
 deriv_strategy_via :: { LDerivStrategy GhcPs }
-  : 'via' qtycondoc       {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $2)))
-                                 [mj AnnVia $1] }
-  | 'via' '(' typedoc ')' {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $3)))
-                                 [mj AnnVia $1,mop $2,mcp $4] }
-  | 'via' tuple_type      {% ams (sLL $1 $> (ViaStrategy (mkLHsSigType $2)))
-                                 [mj AnnVia $1] }
+  : 'via' tyapp                 {% splitTildeApps [$2] >>= \tys -> let
+                                     ty :: LHsType GhcPs
+                                     ty = sL1 $1 $ mkHsAppsTy tys
+
+                                     in ams (sLL $1 $> (ViaStrategy (mkLHsSigType ty)))
+                                            [mj AnnVia $1] }
 
 deriv_standalone_strategy :: { Maybe (LDerivStrategy GhcPs) }
   : 'stock'                     {% ajs (Just (sL1 $1 StockStrategy))
