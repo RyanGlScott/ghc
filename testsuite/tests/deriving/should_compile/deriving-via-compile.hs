@@ -125,7 +125,7 @@ instance (MonadTrans f, MonadTrans g, LiftingMonad g) => MonadTrans (ComposeT f 
     \\ proof @g @m
 
 instance (MFunctor f, MFunctor g, LiftingMonad g) => MFunctor (ComposeT f g) where
-  hoist :: forall m m' xx yy. Monad m => (forall xx. m xx -> m' xx) -> ComposeT f g m yy -> ComposeT f g m' yy
+  hoist :: forall m m'. Monad m => (m ~> m') -> (ComposeT f g m ~> ComposeT f g m')
   hoist f = ComposeT . hoist (hoist f) . getComposeT 
     \\ proof @g @m
 
