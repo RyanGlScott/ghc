@@ -179,6 +179,9 @@ substName env n | Just n' <- lookupNameEnv env n = n'
 -- to induce a substitution on 'availNames'.
 substNameAvailInfo :: HscEnv -> ShNameSubst -> AvailInfo -> IO AvailInfo
 substNameAvailInfo _ env (Avail n) = return (Avail (substName env n))
+substNameAvailInfo hsc_env env (AvailFld f) =
+    let mb_mod = fmap nameModule (lookupNameEnv env (flSelector f))
+    in AvailFld <$> setNameFieldSelector hsc_env mb_mod f
 substNameAvailInfo hsc_env env (AvailTC n ns fs) =
     let mb_mod = fmap nameModule (lookupNameEnv env n)
     in AvailTC (substName env n)

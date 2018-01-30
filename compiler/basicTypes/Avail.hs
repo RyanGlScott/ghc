@@ -15,7 +15,8 @@ module Avail (
     availsToNameEnv,
     availName, availNames, availNonFldNames,
     availNamesWithSelectors,
-    availFlds,
+    availTCFieldLabels,
+    availFldFieldLabel,
     stableAvailCmp,
     plusAvail,
     trimAvail,
@@ -47,6 +48,13 @@ import Data.Function
 
 -- | Records what things are "available", i.e. in scope
 data AvailInfo = Avail Name      -- ^ An ordinary identifier in scope
+               | AvailFld FieldLabel
+                                 -- ^ A record field that is not bundled with
+                                 --   another type or class. Patteryn synonym
+                                 --   record fields often fall under this
+                                 --   umbrella. See also
+                                 --   Note [Parents for record fields]
+                                 --   in RdrName.
                | AvailTC Name
                          [Name]
                          [FieldLabel]
@@ -121,11 +129,16 @@ modules.
 -- | Compare lexicographically
 stableAvailCmp :: AvailInfo -> AvailInfo -> Ordering
 stableAvailCmp (Avail n1)       (Avail n2)   = n1 `stableNameCmp` n2
+stableAvailCmp (AvailFld f1)    (AvailFld f2) = ((stableNameCmp `on` flSelector) f1 f2)
+stableAvailCmp (Avail {})         (AvailFld {})  = LT
 stableAvailCmp (Avail {})         (AvailTC {})   = LT
+stableAvailCmp (AvailFld {})      (AvailTC {})   = LT
 stableAvailCmp (AvailTC n ns nfs) (AvailTC m ms mfs) =
     (n `stableNameCmp` m) `thenCmp`
     (cmpList stableNameCmp ns ms) `thenCmp`
     (cmpList (stableNameCmp `on` flSelector) nfs mfs)
+stableAvailCmp (AvailFld {})      (Avail {})     = GT
+stableAvailCmp (AvailTC {})       (AvailFld {})  = GT
 stableAvailCmp (AvailTC {})       (Avail {})     = GT
 
 avail :: Name -> AvailInfo
@@ -150,29 +163,41 @@ availsToNameEnv avails = foldr add emptyNameEnv avails
 -- | Just the main name made available, i.e. not the available pieces
 -- of type or class brought into scope by the 'GenAvailInfo'
 availName :: AvailInfo -> Name
-availName (Avail n)     = n
+availName (Avail n)       = n
+availName (AvailFld f)    = flSelector f
 availName (AvailTC n _ _) = n
 
 -- | All names made available by the availability information (excluding overloaded selectors)
 availNames :: AvailInfo -> [Name]
 availNames (Avail n)         = [n]
+availNames (AvailFld f)      = [ flSelector f | not (flIsOverloaded f) ]
 availNames (AvailTC _ ns fs) = ns ++ [ flSelector f | f <- fs, not (flIsOverloaded f) ]
 
 -- | All names made available by the availability information (including overloaded selectors)
 availNamesWithSelectors :: AvailInfo -> [Name]
 availNamesWithSelectors (Avail n)         = [n]
+availNamesWithSelectors (AvailFld f)      = [flSelector f]
 availNamesWithSelectors (AvailTC _ ns fs) = ns ++ map flSelector fs
 
 -- | Names for non-fields made available by the availability information
 availNonFldNames :: AvailInfo -> [Name]
 availNonFldNames (Avail n)        = [n]
+availNonFldNames (AvailFld _)     = []
 availNonFldNames (AvailTC _ ns _) = ns
 
--- | Fields made available by the availability information
-availFlds :: AvailInfo -> [FieldLabel]
-availFlds (AvailTC _ _ fs) = fs
-availFlds _                = []
+-- | Fields made available from 'AvailTC', i.e., where the fields
+-- have parent names (contrast this with 'availFldFieldLabel', which only
+-- returns a name if it is from 'AvailFld', i.e., it has no parent).
+availTCFieldLabels :: AvailInfo -> [FieldLabel]
+availTCFieldLabels (Avail {})       = []
+availTCFieldLabels (AvailFld {})    = []
+availTCFieldLabels (AvailTC _ _ fs) = fs
 
+-- | 'Just' a 'FieldLabel' if given an 'AvailFld', 'Nothing' otherwise.
+availFldFieldLabel :: AvailInfo -> Maybe FieldLabel
+availFldFieldLabel (Avail {})   = Nothing
+availFldFieldLabel (AvailFld f) = Just f
+availFldFieldLabel (AvailTC {}) = Nothing
 
 -- -----------------------------------------------------------------------------
 -- Utility
@@ -182,6 +207,7 @@ plusAvail a1 a2
   | debugIsOn && availName a1 /= availName a2
   = pprPanic "RnEnv.plusAvail names differ" (hsep [ppr a1,ppr a2])
 plusAvail a1@(Avail {})         (Avail {})        = a1
+plusAvail a1@(AvailFld {})      (AvailFld {})     = a1
 plusAvail (AvailTC _ [] [])     a2@(AvailTC {})   = a2
 plusAvail a1@(AvailTC {})       (AvailTC _ [] []) = a1
 plusAvail (AvailTC n1 (s1:ss1) fs1) (AvailTC n2 (s2:ss2) fs2)
@@ -203,6 +229,7 @@ plusAvail a1 a2 = pprPanic "RnEnv.plusAvail" (hsep [ppr a1,ppr a2])
 -- | trims an 'AvailInfo' to keep only a single name
 trimAvail :: AvailInfo -> Name -> AvailInfo
 trimAvail (Avail n)         _ = Avail n
+trimAvail (AvailFld f)      _ = AvailFld f
 trimAvail (AvailTC n ns fs) m = case find ((== m) . flSelector) fs of
     Just x  -> AvailTC n [] [x]
     Nothing -> ASSERT( m `elem` ns ) AvailTC n [m] []
@@ -217,6 +244,8 @@ filterAvail keep ie rest =
   case ie of
     Avail n | keep n    -> ie : rest
             | otherwise -> rest
+    AvailFld f | keep (flSelector f) -> ie : rest
+               | otherwise           -> rest
     AvailTC tc ns fs ->
         let ns' = filter keep ns
             fs' = filter (keep . flSelector) fs in
@@ -242,6 +271,8 @@ instance Outputable AvailInfo where
 pprAvail :: AvailInfo -> SDoc
 pprAvail (Avail n)
   = ppr n
+pprAvail (AvailFld fl)
+  = ppr (flLabel fl)
 pprAvail (AvailTC n ns fs)
   = ppr n <> braces (sep [ fsep (punctuate comma (map ppr ns)) <> semi
                          , fsep (punctuate comma (map (ppr . flLabel) fs))])
@@ -250,17 +281,22 @@ instance Binary AvailInfo where
     put_ bh (Avail aa) = do
             putByte bh 0
             put_ bh aa
-    put_ bh (AvailTC ab ac ad) = do
+    put_ bh (AvailFld ab) = do
             putByte bh 1
             put_ bh ab
+    put_ bh (AvailTC ac ad ae) = do
+            putByte bh 2
             put_ bh ac
             put_ bh ad
+            put_ bh ae
     get bh = do
             h <- getByte bh
             case h of
               0 -> do aa <- get bh
                       return (Avail aa)
-              _ -> do ab <- get bh
-                      ac <- get bh
+              1 -> do ab <- get bh
+                      return (AvailFld ab)
+              _ -> do ac <- get bh
                       ad <- get bh
-                      return (AvailTC ab ac ad)
+                      ae <- get bh
+                      return (AvailTC ac ad ae)

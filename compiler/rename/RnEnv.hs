@@ -545,6 +545,7 @@ lookupSubBndrOcc_helper must_have_parent warn_if_deprec parent rdr_name
           case p of
             ParentIs cur_parent -> Just cur_parent
             FldParent { par_is = cur_parent } -> Just cur_parent
+            PatSynFld {} -> Nothing
             NoParent -> Nothing
 
         picked_gres :: [GlobalRdrElt] -> DisambigInfo
@@ -1202,6 +1203,7 @@ lookupImpDeprec iface gre
     case gre_par gre of                      -- or its parent, is warn'd
        ParentIs  p              -> mi_warn_fn iface (nameOccName p)
        FldParent { par_is = p } -> mi_warn_fn iface (nameOccName p)
+       PatSynFld {}             -> Nothing
        NoParent                 -> Nothing
 
 {-

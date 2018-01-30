@@ -471,6 +471,7 @@ data GlobalRdrElt
 --   notation in export lists.  See Note [Parents]
 data Parent = NoParent
             | ParentIs  { par_is :: Name }
+            | PatSynFld { par_lbl :: Maybe FieldLabelString }
             | FldParent { par_is :: Name, par_lbl :: Maybe FieldLabelString }
               -- ^ See Note [Parents for record fields]
             deriving (Eq, Data, Typeable)
@@ -478,6 +479,7 @@ data Parent = NoParent
 instance Outputable Parent where
    ppr NoParent        = empty
    ppr (ParentIs n)    = text "parent:" <> ppr n
+   ppr (PatSynFld f)   = text "patsynfld:" <> ppr f
    ppr (FldParent n f) = text "fldparent:"
                              <> ppr n <> colon <> ppr f
 
@@ -492,6 +494,7 @@ plusParent _ _                   = NoParent
 hasParent :: Parent -> Parent -> Parent
 #if defined(DEBUG)
 hasParent p NoParent = p
+hasParent p (FldParent {}) = p
 hasParent p p'
   | p /= p' = pprPanic "hasParent" (ppr p <+> ppr p')  -- Parents should agree
 #endif
@@ -543,6 +546,7 @@ Note [Parents]
   NoParent        Can not be bundled with a type constructor.
   ParentIs n      Can be bundled with the type constructor corresponding to
                   n.
+  PatSynFld       See Note [Parents for record fields]
   FldParent       See Note [Parents for record fields]
 
 
@@ -576,8 +580,12 @@ field label, if present, rather than the selector name.
 ~~
 
 Record pattern synonym selectors are treated differently. Their parent
-information is `NoParent` in the module in which they are defined. This is because
-a pattern synonym `P` has no parent constructor either.
+information is `PatSynFld` in the module in which they are defined. This is
+because a pattern synonym `P` has no parent constructor either. It would be
+insufficient to represent a pattern synonym selector with `NoParent`, as we
+must be able to distinguish between pattern synonym functions and other
+top-level functions when determining whether to suppress name shadowing
+warnings in the presence of -XNamedWildCards. (See Trac #14630.)
 
 However, if `f` is bundled with a type constructor `T` then whenever `f` is
 imported the parent will use the `Parent` constructor so the parent of `f` is
@@ -626,28 +634,34 @@ localGREsFromAvail = gresFromAvail (const Nothing)
 
 gresFromAvail :: (Name -> Maybe ImportSpec) -> AvailInfo -> [GlobalRdrElt]
 gresFromAvail prov_fn avail
-  = map mk_gre (availNonFldNames avail) ++ map mk_fld_gre (availFlds avail)
+  =    maybeToList (fmap mk_pat_syn_fld_gre (availFldFieldLabel avail))
+    ++ map mk_non_fld_name_gre (availNonFldNames avail)
+    ++ map mk_fld_parent_gre   (availTCFieldLabels avail)
   where
-    mk_gre n
-      = case prov_fn n of  -- Nothing => bound locally
-                           -- Just is => imported from 'is'
-          Nothing -> GRE { gre_name = n, gre_par = mkParent n avail
-                         , gre_lcl = True, gre_imp = [] }
-          Just is -> GRE { gre_name = n, gre_par = mkParent n avail
-                         , gre_lcl = False, gre_imp = [is] }
+    mk_non_fld_name_gre n
+      = mk_gre n (mkParent n avail)
 
-    mk_fld_gre (FieldLabel { flLabel = lbl, flIsOverloaded = is_overloaded
-                           , flSelector = n })
-      = case prov_fn n of  -- Nothing => bound locally
-                           -- Just is => imported from 'is'
-          Nothing -> GRE { gre_name = n, gre_par = FldParent (availName avail) mb_lbl
-                         , gre_lcl = True, gre_imp = [] }
-          Just is -> GRE { gre_name = n, gre_par = FldParent (availName avail) mb_lbl
-                         , gre_lcl = False, gre_imp = [is] }
-      where
-        mb_lbl | is_overloaded = Just lbl
-               | otherwise     = Nothing
+    mk_fld_parent_gre (FieldLabel { flLabel = lbl
+                                  , flIsOverloaded = is_overloaded
+                                  , flSelector = n })
+      = mk_gre n (FldParent (availName avail) (mb_lbl lbl is_overloaded))
 
+    mk_pat_syn_fld_gre (FieldLabel { flLabel = lbl
+                                   , flIsOverloaded = is_overloaded
+                                   , flSelector = n })
+      = mk_gre n (PatSynFld (mb_lbl lbl is_overloaded))
+
+    mb_lbl lbl is_overloaded
+      | is_overloaded = Just lbl
+      | otherwise     = Nothing
+
+    mk_gre n par
+      = case prov_fn n of -- Nothing => bound locally
+                          -- Just is => imported from 'is'
+          Nothing -> GRE { gre_name = n, gre_par = par
+                         , gre_lcl = True, gre_imp = [] }
+          Just is -> GRE { gre_name = n, gre_par = par
+                         , gre_lcl = False, gre_imp = [is] }
 
 greQualModName :: GlobalRdrElt -> ModuleName
 -- Get a suitable module qualifier for the GRE
@@ -694,6 +708,7 @@ greSrcSpan gre@(GRE { gre_name = name, gre_lcl = lcl, gre_imp = iss } )
 
 mkParent :: Name -> AvailInfo -> Parent
 mkParent _ (Avail _)           = NoParent
+mkParent _ (AvailFld _)        = NoParent
 mkParent n (AvailTC m _ _) | n == m    = NoParent
                          | otherwise = ParentIs m
 
@@ -701,6 +716,7 @@ greParentName :: GlobalRdrElt -> Maybe Name
 greParentName gre = case gre_par gre of
                       NoParent -> Nothing
                       ParentIs n -> Just n
+                      PatSynFld _ -> Nothing
                       FldParent n _ -> Just n
 
 -- | Takes a list of distinct GREs and folds them
@@ -732,11 +748,13 @@ gresToAvailInfo gres
 
         comb :: GlobalRdrElt -> AvailInfo -> AvailInfo
         comb _ (Avail n) = Avail n -- Duplicated name
+        comb _ (AvailFld fl) = AvailFld fl -- Duplicated name
         comb gre (AvailTC m ns fls) =
           let n = gre_name gre
           in case gre_par gre of
               NoParent -> AvailTC m (n:ns) fls -- Not sure this ever happens
               ParentIs {} -> AvailTC m (insertChildIntoChildren m ns n) fls
+              PatSynFld mb_lbl -> AvailTC m ns (mkFieldLabel n mb_lbl : fls)
               FldParent _ mb_lbl ->  AvailTC m ns (mkFieldLabel n mb_lbl : fls)
 
 availFromGRE :: GlobalRdrElt -> AvailInfo
@@ -745,6 +763,7 @@ availFromGRE (GRE { gre_name = me, gre_par = parent })
       ParentIs p                  -> AvailTC p [me] []
       NoParent   | isTyConName me -> AvailTC me [me] []
                  | otherwise      -> avail   me
+      PatSynFld mb_lbl   -> AvailFld (mkFieldLabel me mb_lbl)
       FldParent p mb_lbl -> AvailTC p [] [mkFieldLabel me mb_lbl]
 
 mkFieldLabel :: Name -> Maybe FastString -> FieldLabel
@@ -844,8 +863,11 @@ isLocalGRE :: GlobalRdrElt -> Bool
 isLocalGRE (GRE {gre_lcl = lcl }) = lcl
 
 isRecFldGRE :: GlobalRdrElt -> Bool
-isRecFldGRE (GRE {gre_par = FldParent{}}) = True
-isRecFldGRE _                             = False
+isRecFldGRE (GRE {gre_par = par})
+  = case par of
+      FldParent{} -> True
+      PatSynFld{} -> True
+      _           -> False
 
 -- Returns the field label of this GRE, if it has one
 greLabel :: GlobalRdrElt -> Maybe FieldLabelString

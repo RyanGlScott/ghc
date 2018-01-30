@@ -515,30 +515,35 @@ checkPatSynParent :: Name    -- ^ Alleged parent type constructor
                              --   a) Pattern Synonym Constructor
                              --   b) A pattern synonym selector
                   -> TcM ()  -- Fails if wrong parent
-checkPatSynParent _ (ParentIs {}) _
-  = return ()
-
-checkPatSynParent _ (FldParent {}) _
-  = return ()
-
-checkPatSynParent parent NoParent mpat_syn
-  | isUnboundName parent -- Avoid an error cascade
-  = return ()
-
-  | otherwise
-  = do { parent_ty_con <- tcLookupTyCon parent
-       ; mpat_syn_thing <- tcLookupGlobal mpat_syn
-
-        -- 1. Check that the Id was actually from a thing associated with patsyns
-       ; case mpat_syn_thing of
-            AnId i | isId i
-                   , RecSelId { sel_tycon = RecSelPatSyn p } <- idDetails i
-                   -> handle_pat_syn (selErr i) parent_ty_con p
-
-            AConLike (PatSynCon p) -> handle_pat_syn (psErr p) parent_ty_con p
-
-            _ -> failWithDcErr parent mpat_syn (ppr mpat_syn) [] }
+checkPatSynParent parent p mpat_syn = go p
   where
+    go :: Parent -> TcM ()
+    go (ParentIs {})  = return ()
+    go (FldParent {}) = return ()
+    go (PatSynFld {}) = no_parent
+    go NoParent       = no_parent
+
+    no_parent :: TcM ()
+    no_parent
+      | isUnboundName parent -- Avoid an error cascade
+      = return ()
+
+      | otherwise
+      = do { parent_ty_con <- tcLookupTyCon parent
+           ; mpat_syn_thing <- tcLookupGlobal mpat_syn
+
+            -- 1. Check that the Id was actually from a thing associated with
+            --    patsyns
+           ; case mpat_syn_thing of
+                AnId i | isId i
+                       , RecSelId { sel_tycon = RecSelPatSyn p } <- idDetails i
+                       -> handle_pat_syn (selErr i) parent_ty_con p
+
+                AConLike (PatSynCon p) -> handle_pat_syn (psErr p)
+                                                         parent_ty_con p
+
+                _ -> failWithDcErr parent mpat_syn (ppr mpat_syn) [] }
+
     psErr  = exportErrCtxt "pattern synonym"
     selErr = exportErrCtxt "pattern synonym record selector"
 

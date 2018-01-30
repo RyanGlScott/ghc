@@ -889,6 +889,9 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
                           Avail {}                     -- e.g. f(..)
                             -> [DodgyImport $ ieWrappedName tc]
 
+                          AvailFld {}
+                            -> [DodgyImport $ ieWrappedName tc]
+
                           AvailTC _ subs fs
                             | null (drop 1 subs) && null fs -- e.g. T(..) where T is a synonym
                             -> [DodgyImport $ ieWrappedName tc]
@@ -902,6 +905,7 @@ filterImports iface decl_spec (Just (want_hiding, L l import_items))
                 renamed_ie = IEThingAll (L l (replaceWrappedName tc name))
                 sub_avails = case avail of
                                Avail {}              -> []
+                               AvailFld {}           -> []
                                AvailTC name2 subs fs -> [(renamed_ie, AvailTC name2 (subs \\ [name]) fs)]
             case mb_parent of
               Nothing     -> return ([(renamed_ie, avail)], warns)
@@ -1044,6 +1048,7 @@ mkChildEnv gres = foldr add emptyNameEnv gres
     add gre env = case gre_par gre of
         FldParent p _  -> extendNameEnv_Acc (:) singleton env p gre
         ParentIs  p    -> extendNameEnv_Acc (:) singleton env p gre
+        PatSynFld _    -> env
         NoParent       -> env
 
 findChildren :: NameEnv [a] -> Name -> [a]
@@ -1419,6 +1424,8 @@ printMinimalImports imports_w_usage
     -- to say "T(A,B,C)".  So we have to find out what the module exports.
     to_ie _ (Avail n)
        = [IEVar (to_ie_post_rn $ noLoc n)]
+    to_ie _ (AvailFld f)
+       = [IEVar (to_ie_post_rn $ noLoc $ flSelector f)]
     to_ie _ (AvailTC n [m] [])
        | n==m = [IEThingAbs (to_ie_post_rn $ noLoc n)]
     to_ie iface (AvailTC n ns fs)
