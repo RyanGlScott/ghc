@@ -9,6 +9,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -20,6 +21,7 @@ module DerivingViaCompile where
 
 import Data.Void
 import Data.Complex
+import Data.Functor.Const
 import Data.Functor.Identity
 import Data.Ratio
 import Control.Monad.Reader
@@ -28,7 +30,6 @@ import Control.Monad.Writer
 import Control.Applicative hiding (WrappedMonad(..))
 
 import Data.Bifunctor
-import Data.Functor.Identity
 import Data.Monoid
 import Data.Kind
 
@@ -121,7 +122,7 @@ instance MFunctor (StateT s :: MTrans) where
 
 instance MFunctor (WriterT w :: MTrans) where
   hoist :: Monad m => (m ~> m') -> (WriterT w m ~> WriterT w m')
-  hoist nat = WriterT . nat . runWriterT 
+  hoist nat = WriterT . nat . runWriterT
 
 infixr 9 `ComposeT`
 newtype ComposeT :: MTrans -> MTrans -> MTrans where
@@ -135,7 +136,7 @@ instance (MonadTrans f, MonadTrans g, LiftingMonad g) => MonadTrans (ComposeT f 
 
 instance (MFunctor f, MFunctor g, LiftingMonad g) => MFunctor (ComposeT f g) where
   hoist :: forall m m'. Monad m => (m ~> m') -> (ComposeT f g m ~> ComposeT f g m')
-  hoist f = ComposeT . hoist (hoist f) . getComposeT 
+  hoist f = ComposeT . hoist (hoist f) . getComposeT
     \\ proof @g @m
 
 -----
@@ -177,7 +178,7 @@ newtype P6 a = P6 [a]           deriving Show via ([] $ a)
 newtype P7 a = P7 (a, a)        deriving Show via (Identity $ (a, a))
 newtype P8 a = P8 (Either () a) deriving Functor via (($) (Either ()))
 
-newtype f $ a = APP (f a) deriving newtype Show deriving newtype Functor 
+newtype f $ a = APP (f a) deriving newtype Show deriving newtype Functor
 
 ----
 -- From Baldur's notes
@@ -245,7 +246,7 @@ data Sorted a = Sorted a a a
     via (WrapMonad Sorted)
   deriving (Num, Fractional, Floating, Semigroup, Monoid)
     via (WrapApplicative Sorted a)
-    
+
 
 instance Monad Sorted where
   (>>=) :: Sorted a -> (a -> Sorted b) -> Sorted b
@@ -257,7 +258,7 @@ instance Monad Sorted where
 instance Pointed Sorted where
   pointed :: a -> Sorted a
   pointed a = Sorted a a a
-  
+
 ----
 -- 3
 ----
@@ -271,7 +272,7 @@ newtype WrappedNumEq2 a = WrappedNumEq2 a
 instance (Num a, Eq a) => IsZero (WrappedNumEq a) where
   isZero :: WrappedNumEq a -> Bool
   isZero (WrappedNumEq a) = 0 == a
-  
+
 instance Show a => IsZero (WrappedShow a) where
   isZero :: WrappedShow a -> Bool
   isZero (WrappedShow a) = "0" == show a
@@ -280,7 +281,7 @@ instance (Num a, Eq a) => IsZero (WrappedNumEq2 a) where
   isZero :: WrappedNumEq2 a -> Bool
   isZero (WrappedNumEq2 a) = a + a == a
 
-newtype INT = INT Int 
+newtype INT = INT Int
   deriving newtype Show
   deriving IsZero via (WrappedNumEq Int)
 
@@ -292,8 +293,8 @@ newtype VOID = VOID Void deriving IsZero via (WrappedShow Void)
 class Bifunctor p => Biapplicative p where
   bipure :: a -> b -> p a b
 
-  biliftA2 
-    :: (a  -> b  -> c) 
+  biliftA2
+    :: (a  -> b  -> c)
     -> (a' -> b' -> c')
     -> p a a'
     -> p b b'
@@ -443,3 +444,17 @@ deriving via (WrapAdditive Maybe)    instance Affine Maybe
 deriving via (WrapAdditive ZipList)  instance Affine ZipList
 -- ADDITIVE(Identity)
 deriving via (WrapAdditive Identity) instance Affine Identity
+
+----
+-- 8
+----
+
+class C2 a b c where
+  c2 :: a -> b -> c
+
+instance C2 a b (Const a b) where
+  c2 x _ = Const x
+
+newtype Fweemp a = Fweemp a
+  deriving (C2 a b)
+       via (Const a (b :: Type))
