@@ -613,27 +613,23 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
     addErrCtxt (standaloneCtxt deriv_ty)  $
     do { traceTc "Standalone deriving decl for" (ppr deriv_ty)
        ; let mb_deriv_strat = fmap unLoc mbl_deriv_strat
-       ; traceTc "Standalone deriving (pre-typechecking)" $
-           vcat [ text "mb_deriv_strat" <+> ppr mb_deriv_strat
-                , text "deriv_ty"       <+> ppr deriv_ty ]
-       ; (cls_tvs, deriv_ctxt, cls, inst_tys)
-           <- tcStandaloneDerivInstType deriv_ty
-       ; (strat_tvs, mb_deriv_strat') <-
-           tcExtendTyVarEnv cls_tvs $
-           maybe ([], Nothing) (fmap Just) <$>
-           traverse tcDerivStrategy mb_deriv_strat
-       ; traceTc "Standalone deriving (post-typechecking)" $ vcat
-              [ text "cls_tvs:" <+> ppr cls_tvs
-              , text "deriv_ctxt:" <+> ppr deriv_ctxt
+       ; traceTc "Deriving strategy (standalone deriving)" $
+           vcat [ppr mb_deriv_strat, ppr deriv_ty]
+       ; (mb_deriv_strat', tvs, (theta, cls, inst_tys))
+           <- tcDerivStrategy mb_deriv_strat $ do
+                (tvs, theta, cls, inst_tys)
+                  <- tcStandaloneDerivInstType deriv_ty
+                pure (tvs, (theta, cls, inst_tys))
+       ; traceTc "Standalone deriving;" $ vcat
+              [ text "tvs:" <+> ppr tvs
+              , text "theta:" <+> ppr theta
               , text "cls:" <+> ppr cls
               , text "tys:" <+> ppr inst_tys
-              , text "strat_tvs:" <+> ppr strat_tvs
               , text "mb_deriv_strat:" <+> ppr mb_deriv_strat' ]
                 -- C.f. TcInstDcls.tcLocalInstDecl1
        ; checkTc (not (null inst_tys)) derivingNullaryErr
 
-       ; let tvs = cls_tvs `chkAppend` strat_tvs
-             cls_tys = take (length inst_tys - 1) inst_tys
+       ; let cls_tys = take (length inst_tys - 1) inst_tys
              inst_ty = last inst_tys
        ; traceTc "Standalone deriving:" $ vcat
               [ text "class:" <+> ppr cls
@@ -725,11 +721,11 @@ deriveTyData :: [TyVar] -> TyCon -> [Type]   -- LHS of data or data instance
 deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
   = setSrcSpan (getLoc (hsSigType deriv_pred)) $
     -- Use loc of the 'deriving' item
-    do  { (deriv_tvs, cls, cls_tys, cls_arg_kinds, _strat_tvs, mb_deriv_strat')
+    do  { (mb_deriv_strat', deriv_tvs, (cls, cls_tys, cls_arg_kinds))
                    -- Why not scopeTyVars? Because these are *TyVar*s, not TcTyVars.
                    -- Their kinds are fully settled. No need to worry about skolem
                    -- escape.
-                <- tcExtendTyVarEnv tvs $ do
+                <- tcExtendTyVarEnv tvs $
                 -- Deriving preds may (now) mention
                 -- the type variables for the type constructor, hence tcExtendTyVarenv
                 -- The "deriv_pred" is a LHsType to take account of the fact that for
@@ -738,13 +734,8 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
                 -- Typeable is special, because Typeable :: forall k. k -> Constraint
                 -- so the argument kind 'k' is not decomposable by splitKindFunTys
                 -- as is the case for all other derivable type classes
-                     (deriv_tvs, cls, cls_tys, cls_arg_kinds)
-                       <- tcHsDeriv deriv_pred
-                     (strat_tvs, mb_deriv_strat')
-                       <- maybe ([], Nothing) (fmap Just) <$>
-                          traverse tcDerivStrategy mb_deriv_strat
-                     pure ( deriv_tvs, cls, cls_tys, cls_arg_kinds
-                          , strat_tvs, mb_deriv_strat' )
+                     tcDerivStrategy mb_deriv_strat $
+                     tcHsDeriv deriv_pred
 
         ; when (cls_arg_kinds `lengthIsNot` 1) $
             failWithTc (nonUnaryErr deriv_pred)
@@ -773,38 +764,54 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
         ; checkTc (enough_args && isJust mb_match)
                   (derivingKindErr tc cls cls_tys cls_arg_kind enough_args)
 
-        ; let Just kind_subst = mb_match
-              ki_subst_range  = getTCvSubstRangeFVs kind_subst
-              all_tkvs        = toposortTyVars $
-                                fvVarList $ unionFV
-                                  (tyCoFVsOfTypes tc_args_to_keep)
-                                  (FV.mkFVs deriv_tvs)
-              -- See Note [Unification of two kind variables in deriving]
-              unmapped_tkvs   = filter (\v -> v `notElemTCvSubst` kind_subst
-                                      && not (v `elemVarSet` ki_subst_range))
-                                       all_tkvs
-              (subst, _)      = mapAccumL substTyVarBndr
-                                          kind_subst unmapped_tkvs
-              final_tc_args   = substTys subst tc_args_to_keep
-              final_cls_tys   = substTys subst cls_tys
-              tkvs            = tyCoVarsOfTypesWellScoped $
-                                final_cls_tys ++ final_tc_args
+        ; let propagate_subst kind_subst tkvs' cls_tys' tc_args'
+                = (final_tkvs, final_cls_tys, final_tc_args)
+                where
+                  ki_subst_range  = getTCvSubstRangeFVs kind_subst
+                  -- See Note [Unification of two kind variables in deriving]
+                  unmapped_tkvs   = filter (\v -> v `notElemTCvSubst` kind_subst
+                                         && not (v `elemVarSet` ki_subst_range))
+                                           tkvs'
+                  (subst, _)      = mapAccumL substTyVarBndr
+                                              kind_subst unmapped_tkvs
+                  final_tc_args   = substTys subst tc_args'
+                  final_cls_tys   = substTys subst cls_tys'
+                  final_tkvs      = tyCoVarsOfTypesWellScoped $
+                                    final_cls_tys ++ final_tc_args
 
-        ; case mb_deriv_strat' of
-            Just (ViaStrategy via_ty) -> do
-              let via_kind = typeKind via_ty
-                  -- TODO RGS: It's not really "final", is it?
-                  final_inst_ty_kind = typeKind (mkTyConApp tc final_tc_args)
-                  via_match = tcUnifyTy final_inst_ty_kind via_kind
+        ; let tkvs = toposortTyVars $ fvVarList $
+                     unionFV (tyCoFVsOfTypes tc_args_to_keep)
+                             (FV.mkFVs deriv_tvs)
+              Just kind_subst = mb_match
+              (tkvs', final_cls_tys', final_tc_args')
+                = propagate_subst kind_subst tkvs cls_tys tc_args_to_keep
 
-              checkTc (isJust via_match)
-                      (derivingViaKindErr cls final_inst_ty_kind
-                                          via_ty via_kind)
-              -- TODO RGS: Actually apply this substitution
-            _ -> pure ()
+        ; (tkvs, final_cls_tys, final_tc_args, final_mb_deriv_strat) <-
+            case mb_deriv_strat' of
+              Just (ViaStrategy via_ty) -> do
+                let final_via_ty   = via_ty
+                    final_via_kind = typeKind final_via_ty
+                    final_inst_ty_kind
+                              = typeKind (mkTyConApp tc final_tc_args')
+                    via_match = tcUnifyTy final_inst_ty_kind final_via_kind
+
+                checkTc (isJust via_match)
+                        (derivingViaKindErr cls final_inst_ty_kind
+                                            final_via_ty final_via_kind)
+
+                let Just via_subst = via_match
+                    (final_tkvs, final_cls_tys, final_tc_args)
+                      = propagate_subst via_subst tkvs'
+                                        final_cls_tys' final_tc_args'
+                pure ( final_tkvs, final_cls_tys, final_tc_args
+                     , Just $ ViaStrategy $ substTy via_subst via_ty
+                     )
+
+              _ -> pure ( tkvs', final_cls_tys', final_tc_args'
+                        , mb_deriv_strat' )
 
         ; traceTc "Deriving strategy (deriving clause)" $
-            vcat [ppr mb_deriv_strat', ppr deriv_pred]
+            vcat [ppr final_mb_deriv_strat, ppr deriv_pred]
 
         ; traceTc "derivTyData1" (vcat [ pprTyVars tvs, ppr tc, ppr tc_args
                                        , ppr deriv_pred
@@ -840,7 +847,7 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
 
         ; spec <- mkEqnHelp Nothing tkvs
                             cls final_cls_tys tc final_tc_args
-                            (InferContext Nothing) mb_deriv_strat'
+                            (InferContext Nothing) final_mb_deriv_strat
         ; traceTc "derivTyData" (ppr spec)
         ; return $ Just spec } }
 

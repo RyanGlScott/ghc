@@ -13,7 +13,7 @@ module RnTypes (
         rnHsKind, rnLHsKind,
         rnHsSigType, rnHsSigTypeAndThen, rnHsWcType,
         rnHsSigWcType, rnHsSigWcTypeScoped,
-        rnLHsInstType, rnLHsInstTypeAndThen,
+        rnLHsInstType,
         newTyVarNameRn, collectAnonWildCards,
         rnConDeclFields,
         rnLTyVar,
@@ -291,11 +291,12 @@ rnHsSigType :: HsDocContext -> LHsSigType GhcPs
 -- that cannot have wildcards
 rnHsSigType ctx hs_sig_ty
   = do { (hs_sig_ty', _, fvs) <- rnHsSigTypeAndThen ctx hs_sig_ty
-                                                    (pure ((), emptyFVs))
+                                                    (\_ -> pure ((), emptyFVs))
        ; pure (hs_sig_ty', fvs) }
 
 rnHsSigTypeAndThen
-  :: HsDocContext -> LHsSigType GhcPs -> RnM (a, FreeVars)
+  :: HsDocContext -> LHsSigType GhcPs
+  -> ([Name] -> RnM (a, FreeVars))
   -> RnM (LHsSigType GhcRn, a, FreeVars)
 rnHsSigTypeAndThen ctx (HsIB { hsib_body = hs_ty }) thing_inside
   = do { traceRn "rnHsSigType" (ppr hs_ty)
@@ -303,7 +304,7 @@ rnHsSigTypeAndThen ctx (HsIB { hsib_body = hs_ty }) thing_inside
        ; ((hs_sig_ty, thing), fvs)
            <- rnImplicitBndrs (not (isLHsForAllTy hs_ty)) ctx vars $ \ vars ->
               do { (body', fvs1) <- rnLHsType ctx hs_ty
-                 ; (thing, fvs2) <- thing_inside
+                 ; (thing, fvs2) <- thing_inside vars
                  ; pure ( (mk_implicit_bndrs vars body' fvs1, thing)
                         , fvs1 `plusFV` fvs2 ) }
        ; pure (hs_sig_ty, thing, fvs) }
