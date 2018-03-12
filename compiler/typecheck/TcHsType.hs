@@ -6,6 +6,7 @@
 -}
 
 {-# LANGUAGE CPP, TupleSections, MultiWayIf, RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module TcHsType (
         -- Type signatures
@@ -244,7 +245,7 @@ tc_hs_sig_type (HsIB { hsib_vars = sig_vars
        ; return (mkSpecForAllTys tkvs ty) }
 
 -----------------
-tcHsDeriv :: LHsSigType GhcRn -> TcM ([TyVar], Class, [Type], [Kind])
+tcHsDeriv :: LHsSigType GhcRn -> TcM ([TyVar], (Class, [Type], [Kind]))
 -- Like tcHsSigType, but for the ...deriving( C t1 ty2 ) clause
 -- Returns the C, [ty1, ty2, and the kinds of C's remaining arguments
 -- E.g.    class C (a::*) (b::k->k)
@@ -261,20 +262,37 @@ tcHsDeriv hs_ty
        ; let (tvs, pred) = splitForAllTys ty
        ; let (args, _) = splitFunTys cls_kind
        ; case getClassPredTys_maybe pred of
-           Just (cls, tys) -> return (tvs, cls, tys, args)
+           Just (cls, tys) -> return (tvs, (cls, tys, args))
            Nothing -> failWithTc (text "Illegal deriving item" <+> quotes (ppr hs_ty)) }
 
-tcDerivStrategy :: DerivStrategy GhcRn
-                   -- TODO RGS: Explain what these type variables are
-                -> TcM ([TyVar], DerivStrategyPostTc)
-tcDerivStrategy StockStrategy    = pure ([], StockStrategy)
-tcDerivStrategy AnyclassStrategy = pure ([], AnyclassStrategy)
-tcDerivStrategy NewtypeStrategy  = pure ([], NewtypeStrategy)
-tcDerivStrategy (ViaStrategy ty) = do
-  cls_kind <- newMetaKindVar
-  ty' <- checkNoErrs $ tc_hs_sig_type_and_gen ty cls_kind
-  let (tvs, pred) = splitForAllTys ty'
-  pure (tvs, ViaStrategy pred)
+-- TODO RGS: Seriously, explain this.
+tcDerivStrategy :: forall a.
+                   Maybe (DerivStrategy GhcRn)
+                -> TcM ([TyVar], a)
+                -> TcM (Maybe DerivStrategyPostTc, [TyVar], a)
+tcDerivStrategy mds thing_inside
+  = case mds of
+      Nothing -> boring_case Nothing
+      Just ds -> do (ds', tvs, thing) <- tc_deriv_strategy ds
+                    pure (Just ds', tvs, thing)
+  where
+    tc_deriv_strategy :: DerivStrategy GhcRn
+                      -> TcM (DerivStrategyPostTc, [TyVar], a)
+    tc_deriv_strategy StockStrategy    = boring_case StockStrategy
+    tc_deriv_strategy AnyclassStrategy = boring_case AnyclassStrategy
+    tc_deriv_strategy NewtypeStrategy  = boring_case NewtypeStrategy
+    tc_deriv_strategy (ViaStrategy ty) = do
+      cls_kind <- newMetaKindVar
+      ty' <- checkNoErrs $ tc_hs_sig_type_and_gen ty cls_kind
+      let (via_tvs, via_pred) = splitForAllTys ty'
+      tcExtendTyVarEnv via_tvs $ do
+        (thing_tvs, thing) <- thing_inside
+        pure (ViaStrategy via_pred, via_tvs ++ thing_tvs, thing)
+
+    boring_case :: mds -> TcM (mds, [TyVar], a)
+    boring_case mds = do
+      (thing_tvs, thing) <- thing_inside
+      pure (mds, thing_tvs, thing)
 
 tcHsClsInstType :: UserTypeCtxt    -- InstDeclCtxt or SpecInstCtxt
                 -> LHsSigType GhcRn
