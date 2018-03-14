@@ -614,11 +614,41 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
        ; let mb_deriv_strat = fmap unLoc mbl_deriv_strat
        ; traceTc "Deriving strategy (standalone deriving)" $
            vcat [ppr mb_deriv_strat, ppr deriv_ty]
-       ; (mb_deriv_strat', tvs, (theta, cls, inst_tys))
+       ; (mb_deriv_strat', tvs', (theta', cls, inst_tys'))
            <- tcDerivStrategy mb_deriv_strat $ do
                 (tvs, theta, cls, inst_tys)
                   <- tcHsClsInstType TcType.InstDeclCtxt deriv_ty
                 pure (tvs, (theta, cls, inst_tys))
+       ; checkTc (not (null inst_tys')) derivingNullaryErr
+       ; let inst_ty' = last inst_tys'
+       ; (tvs, theta, inst_tys) <-
+           case mb_deriv_strat' of
+             Just (ViaStrategy via_ty) -> do
+               let via_kind     = typeKind via_ty
+                   inst_ty_kind = typeKind inst_ty'
+                   mb_match     = tcUnifyTy inst_ty_kind via_kind
+
+               checkTc (isJust mb_match)
+                       (derivingViaKindErr cls inst_ty_kind
+                                           via_ty via_kind)
+
+               let Just kind_subst = mb_match
+                   ki_subst_range  = getTCvSubstRangeFVs kind_subst
+                   -- See Note [Unification of two kind variables in deriving]
+                   unmapped_tkvs = filter (\v -> v `notElemTCvSubst` kind_subst
+                                        && not (v `elemVarSet` ki_subst_range))
+                                          tvs'
+                   (subst, _)    = mapAccumL substTyVarBndr
+                                             kind_subst unmapped_tkvs
+                   final_theta    = substTheta subst theta'
+                   final_inst_tys = substTys subst inst_tys'
+                   final_tvs      = tyCoVarsOfTypesWellScoped $
+                                    final_theta ++ final_inst_tys
+               pure (final_tvs, final_theta, final_inst_tys)
+
+             _ -> pure (tvs', theta', inst_tys')
+       ; let cls_tys = take (length inst_tys - 1) inst_tys
+             inst_ty = last inst_tys
        ; traceTc "Standalone deriving;" $ vcat
               [ text "tvs:" <+> ppr tvs
               , text "theta:" <+> ppr theta
@@ -626,10 +656,6 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
               , text "tys:" <+> ppr inst_tys
               , text "mb_deriv_strat:" <+> ppr mb_deriv_strat' ]
                 -- C.f. TcInstDcls.tcLocalInstDecl1
-       ; checkTc (not (null inst_tys)) derivingNullaryErr
-
-       ; let cls_tys = take (length inst_tys - 1) inst_tys
-             inst_ty = last inst_tys
        ; traceTc "Standalone deriving:" $ vcat
               [ text "class:" <+> ppr cls
               , text "class types:" <+> ppr cls_tys

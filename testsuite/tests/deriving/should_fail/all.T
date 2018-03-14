@@ -70,3 +70,4 @@ test('T12801', normal, compile_fail, [''])
 test('T14365', [extra_files(['T14365B.hs','T14365B.hs-boot'])],
                multimod_compile_fail, ['T14365A',''])
 test('deriving-via-fail', normal, compile_fail, [''])
+test('deriving-via-fail2', normal, compile_fail, [''])
