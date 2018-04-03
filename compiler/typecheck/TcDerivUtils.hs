@@ -14,6 +14,7 @@ module TcDerivUtils (
         DerivSpecMechanism(..), derivSpecMechanismToStrategy, isDerivSpecStock,
         isDerivSpecNewtype, isDerivSpecAnyClass, isDerivSpecVia,
         DerivContext(..), DerivStatus(..),
+        isStandaloneDeriv, isStandaloneWildcardDeriv, mkDerivOrigin,
         PredOrigin(..), ThetaOrigin(..), mkPredOrigin,
         mkThetaOrigin, mkThetaOriginFromPreds, substPredOrigin,
         checkSideConditions, hasStockDeriving,

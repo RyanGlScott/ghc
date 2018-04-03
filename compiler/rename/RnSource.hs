@@ -942,10 +942,12 @@ rnSrcDerivDecl (DerivDecl ty mds overlap)
   = do { standalone_deriv_ok <- xoptM LangExt.StandaloneDeriving
        ; unless standalone_deriv_ok (addErr standaloneDerivErr)
        ; (mds', ty', fvs)
-           <- rnLDerivStrategy DerivDeclCtx mds $ \strat_tvs via_ty ->
-              rnAndReportFloatingViaTvs strat_tvs via_ty $
-              rnLHsSigWcType DerivDeclCtx ty
+           <- rnLDerivStrategy DerivDeclCtx mds $ \strat_tvs ppr_via_ty ->
+              rnAndReportFloatingViaTvs strat_tvs loc ppr_via_ty $
+              rnHsSigWcType DerivDeclCtx ty
        ; return (DerivDecl ty' mds' overlap, fvs) }
+  where
+    loc = getLoc $ hsib_body $ hswc_body ty
 
 standaloneDerivErr :: SDoc
 standaloneDerivErr
@@ -1658,12 +1660,17 @@ rnLHsDerivingClause doc
                 (L loc (HsDerivingClause { deriv_clause_strategy = dcs
                                          , deriv_clause_tys = L loc' dct }))
   = do { (dcs', dct', fvs)
-           <- rnLDerivStrategy doc dcs $ \strat_tvs via_ty ->
-              mapFvRn (rnAndReportFloatingViaTvs strat_tvs via_ty .
-                       rnHsSigType doc) dct
+           <- rnLDerivStrategy doc dcs $ \strat_tvs ppr_via_ty ->
+              mapFvRn (rn_deriv_ty strat_tvs ppr_via_ty) dct
        ; pure ( L loc (HsDerivingClause { deriv_clause_strategy = dcs'
-                                       , deriv_clause_tys = L loc' dct' })
+                                        , deriv_clause_tys = L loc' dct' })
               , fvs ) }
+  where
+    rn_deriv_ty :: [Name] -> SDoc -> LHsSigType GhcPs
+                -> RnM (LHsSigType GhcRn, FreeVars)
+    rn_deriv_ty strat_tvs ppr_via_ty deriv_ty@(HsIB {hsib_body = L loc _}) =
+      rnAndReportFloatingViaTvs strat_tvs loc ppr_via_ty $
+      rnHsSigType doc deriv_ty
 
 rnLDerivStrategy :: forall a.
                     HsDocContext -> Maybe (LDerivStrategy GhcPs)
@@ -1705,24 +1712,25 @@ rnLDerivStrategy doc mds thing_inside
 
 -- TODO RGS: What is going on here?
 rnAndReportFloatingViaTvs
-  :: [Name] -> SDoc
-     -- TODO RGS: What are these first two arguments? Also, mention that
+  :: forall a. Outputable a
+  => [Name] -> SrcSpan -> SDoc
+     -- TODO RGS: What are these first three arguments? Also, mention that
      -- they're only used for error message purposes.
-  -> TcM (LHsSigType GhcRn, FreeVars)
-  -> RnM (LHsSigType GhcRn, FreeVars)
-rnAndReportFloatingViaTvs tv_names via_ty thing_inside
-  = do (thing@HsIB {hsib_body = L l _}, thing_fvs) <- thing_inside
-       setSrcSpan l $ mapM_ (report_floating_via_tv thing thing_fvs) tv_names
+  -> RnM (a, FreeVars)
+  -> RnM (a, FreeVars)
+rnAndReportFloatingViaTvs tv_names loc ppr_via_ty thing_inside
+  = do (thing, thing_fvs) <- thing_inside
+       setSrcSpan loc $ mapM_ (report_floating_via_tv thing thing_fvs) tv_names
        pure (thing, thing_fvs)
   where
-    report_floating_via_tv :: LHsSigType GhcRn -> FreeVars -> Name -> RnM ()
-    report_floating_via_tv deriv_ty used_names tv_name
+    report_floating_via_tv :: a -> FreeVars -> Name -> RnM ()
+    report_floating_via_tv thing used_names tv_name
       = unless (tv_name `elemNameSet` used_names) $ addErr $ vcat
           [ text "Type variable" <+> quotes (ppr tv_name) <+>
             text "is bound in the" <+> quotes (text "via") <+>
-            text "type" <+> quotes via_ty
+            text "type" <+> quotes ppr_via_ty
             -- TODO RGS: Should we say _where_ it needs to be mentioned?
-          , text "but is not mentioned in" <+> quotes (ppr deriv_ty) <>
+          , text "but is not mentioned in" <+> quotes (ppr thing) <>
             text ", which is illegal" ]
 
 badGadtStupidTheta :: HsDocContext -> SDoc

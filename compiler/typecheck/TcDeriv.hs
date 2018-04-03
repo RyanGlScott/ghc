@@ -615,14 +615,14 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
        ; let mb_deriv_strat = fmap unLoc mbl_deriv_strat
        ; traceTc "Deriving strategy (standalone deriving)" $
            vcat [ppr mb_deriv_strat, ppr deriv_ty]
-       ; (mb_deriv_strat', tvs', (theta', cls, inst_tys'))
-           <- tcDerivStrategy mb_deriv_strat $ do
-                (tvs, theta, cls, inst_tys)
+       ; (mb_deriv_strat', tvs', (deriv_ctxt', cls, inst_tys'))
+           <- tcDerivStrategy TcType.InstDeclCtxt mb_deriv_strat $ do
+                (tvs, deriv_ctxt, cls, inst_tys)
                   <- tcStandaloneDerivInstType deriv_ty
-                pure (tvs, (theta, cls, inst_tys))
+                pure (tvs, (deriv_ctxt, cls, inst_tys))
        ; checkTc (not (null inst_tys')) derivingNullaryErr
        ; let inst_ty' = last inst_tys'
-       ; (tvs, theta, inst_tys) <-
+       ; (tvs, deriv_ctxt, inst_tys) <-
            case mb_deriv_strat' of
              Just (ViaStrategy via_ty) -> do
                let via_kind     = typeKind via_ty
@@ -641,21 +641,26 @@ deriveStandalone (L loc (DerivDecl deriv_ty mbl_deriv_strat overlap_mode))
                                           tvs'
                    (subst, _)    = mapAccumL substTyVarBndr
                                              kind_subst unmapped_tkvs
-                   final_theta    = substTheta subst theta'
-                   final_inst_tys = substTys subst inst_tys'
-                   final_tvs      = tyCoVarsOfTypesWellScoped $
-                                    final_theta ++ final_inst_tys
-               pure (final_tvs, final_theta, final_inst_tys)
+                   (final_deriv_ctxt, final_deriv_ctxt_tys)
+                     = case deriv_ctxt' of
+                         InferContext wc -> (InferContext wc, [])
+                         SupplyContext theta ->
+                           let final_theta = substTheta subst theta
+                           in (SupplyContext final_theta, final_theta)
+                   final_inst_tys   = substTys subst inst_tys'
+                   final_tvs        = tyCoVarsOfTypesWellScoped $
+                                      final_deriv_ctxt_tys ++ final_inst_tys
+               pure (final_tvs, final_deriv_ctxt, final_inst_tys)
 
-             _ -> pure (tvs', theta', inst_tys')
+             _ -> pure (tvs', deriv_ctxt', inst_tys')
        ; let cls_tys = take (length inst_tys - 1) inst_tys
              inst_ty = last inst_tys
        ; traceTc "Standalone deriving;" $ vcat
               [ text "tvs:" <+> ppr tvs
-              , text "theta:" <+> ppr theta
+              , text "mb_deriv_strat:" <+> ppr mb_deriv_strat'
+              , text "deriv_ctxt:" <+> ppr deriv_ctxt
               , text "cls:" <+> ppr cls
-              , text "tys:" <+> ppr inst_tys
-              , text "mb_deriv_strat:" <+> ppr mb_deriv_strat' ]
+              , text "tys:" <+> ppr inst_tys ]
                 -- C.f. TcInstDcls.tcLocalInstDecl1
        ; traceTc "Standalone deriving:" $ vcat
               [ text "class:" <+> ppr cls
@@ -760,7 +765,7 @@ deriveTyData tvs tc tc_args mb_deriv_strat deriv_pred
                 -- Typeable is special, because Typeable :: forall k. k -> Constraint
                 -- so the argument kind 'k' is not decomposable by splitKindFunTys
                 -- as is the case for all other derivable type classes
-                     tcDerivStrategy mb_deriv_strat $
+                     tcDerivStrategy TcType.DerivClauseCtxt mb_deriv_strat $
                      tcHsDeriv deriv_pred
 
         ; when (cls_arg_kinds `lengthIsNot` 1) $

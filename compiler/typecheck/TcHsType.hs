@@ -289,10 +289,11 @@ tcHsDeriv hs_ty
 
 -- TODO RGS: Seriously, explain this.
 tcDerivStrategy :: forall a.
-                   Maybe (DerivStrategy GhcRn)
+                   UserTypeCtxt
+                -> Maybe (DerivStrategy GhcRn)
                 -> TcM ([TyVar], a)
                 -> TcM (Maybe DerivStrategyPostTc, [TyVar], a)
-tcDerivStrategy mds thing_inside
+tcDerivStrategy user_ctxt mds thing_inside
   = case mds of
       Nothing -> boring_case Nothing
       Just ds -> do (ds', tvs, thing) <- tc_deriv_strategy ds
@@ -305,7 +306,8 @@ tcDerivStrategy mds thing_inside
     tc_deriv_strategy NewtypeStrategy  = boring_case NewtypeStrategy
     tc_deriv_strategy (ViaStrategy ty) = do
       cls_kind <- newMetaKindVar
-      ty' <- checkNoErrs $ tc_hs_sig_type_and_gen ty cls_kind
+      ty' <- checkNoErrs $
+             tc_hs_sig_type_and_gen (SigTypeSkol user_ctxt) ty cls_kind
       let (via_tvs, via_pred) = splitForAllTys ty'
       tcExtendTyVarEnv via_tvs $ do
         (thing_tvs, thing) <- thing_inside

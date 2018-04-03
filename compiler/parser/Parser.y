@@ -88,9 +88,9 @@ import GhcPrelude
 import qualified GHC.LanguageExtensions as LangExt
 }
 
-%expect 206 -- shift/reduce conflicts
+%expect 209 -- shift/reduce conflicts
 
-{- Last updated: 11 Dec 2017
+{- Last updated: 03 Apr 2018
 
 If you modify this parser and add a conflict, please update this comment.
 You can learn more about the conflicts by passing 'happy' the -i flag:
@@ -121,7 +121,7 @@ follows. Shift parses as if the 'module' keyword follows.
 
 -------------------------------------------------------------------------------
 
-state 56 contains 2 shift/reduce conflicts.
+state 57 contains 2 shift/reduce conflicts.
 
     *** strict_mark -> unpackedness .
         strict_mark -> unpackedness . strictness
@@ -130,7 +130,7 @@ state 56 contains 2 shift/reduce conflicts.
 
 -------------------------------------------------------------------------------
 
-state 60 contains 1 shift/reduce conflict.
+state 61 contains 1 shift/reduce conflict.
 
         context -> btype .
     *** type -> btype .
@@ -140,7 +140,7 @@ state 60 contains 1 shift/reduce conflict.
 
 -------------------------------------------------------------------------------
 
-state 61 contains 45 shift/reduce conflicts.
+state 62 contains 46 shift/reduce conflicts.
 
     *** btype -> tyapps .
         tyapps -> tyapps . tyapp
@@ -158,7 +158,7 @@ Shift parses as (per longest-parse rule):
 
 -------------------------------------------------------------------------------
 
-state 142 contains 14 shift/reduce conflicts.
+state 143 contains 14 shift/reduce conflicts.
 
         exp -> infixexp . '::' sigtype
         exp -> infixexp . '-<' exp
@@ -183,7 +183,7 @@ Shift parses as (per longest-parse rule):
 
 -------------------------------------------------------------------------------
 
-state 147 contains 67 shift/reduce conflicts.
+state 148 contains 68 shift/reduce conflicts.
 
     *** exp10 -> fexp .
         fexp -> fexp . aexp
@@ -201,7 +201,7 @@ Shift parses as (per longest-parse rule):
 
 -------------------------------------------------------------------------------
 
-state 307 contains 1 shift/reduce conflicts.
+state 308 contains 1 shift/reduce conflicts.
 
         rule -> STRING . rule_activation rule_forall infixexp '=' exp
 
@@ -219,18 +219,18 @@ a rule instructing how to rewrite the expression '[0] f'.
 
 -------------------------------------------------------------------------------
 
-state 317 contains 1 shift/reduce conflict.
+state 318 contains 1 shift/reduce conflict.
 
     *** type -> btype .
         type -> btype . '->' ctype
 
     Conflict: '->'
 
-Same as state 60 but without contexts.
+Same as state 61 but without contexts.
 
 -------------------------------------------------------------------------------
 
-state 357 contains 1 shift/reduce conflicts.
+state 362 contains 1 shift/reduce conflicts.
 
         tup_exprs -> commas . tup_tail
         sysdcon_nolist -> '(' commas . ')'
@@ -245,7 +245,7 @@ if -XTupleSections is not specified.
 
 -------------------------------------------------------------------------------
 
-state 413 contains 1 shift/reduce conflicts.
+state 418 contains 1 shift/reduce conflicts.
 
         tup_exprs -> commas . tup_tail
         sysdcon_nolist -> '(#' commas . '#)'
@@ -253,21 +253,21 @@ state 413 contains 1 shift/reduce conflicts.
 
     Conflict: '#)' (empty tup_tail reduces)
 
-Same as State 357 for unboxed tuples.
+Same as State 362 for unboxed tuples.
 
 -------------------------------------------------------------------------------
 
-state 424 contains 67 shift/reduce conflicts.
+state 429 contains 68 shift/reduce conflicts.
 
     *** exp10 -> '-' fexp .
         fexp -> fexp . aexp
         fexp -> fexp . TYPEAPP atype
 
-Same as 147 but with a unary minus.
+Same as 148 but with a unary minus.
 
 -------------------------------------------------------------------------------
 
-state 488 contains 1 shift/reduce conflict.
+state 493 contains 1 shift/reduce conflict.
 
         oqtycon -> '(' qtyconsym . ')'
     *** qtyconop -> qtyconsym .
@@ -281,7 +281,7 @@ parenthesized infix type expression of length 1.
 
 -------------------------------------------------------------------------------
 
-state 689 contains 1 shift/reduce conflicts.
+state 694 contains 1 shift/reduce conflicts.
 
     *** aexp2 -> ipvar .
         dbind -> ipvar . '=' exp
@@ -296,7 +296,7 @@ sensible meaning, namely the lhs of an implicit binding.
 
 -------------------------------------------------------------------------------
 
-state 765 contains 1 shift/reduce conflicts.
+state 771 contains 1 shift/reduce conflicts.
 
         rule -> STRING rule_activation . rule_forall infixexp '=' exp
 
@@ -313,7 +313,7 @@ doesn't include 'forall'.
 
 -------------------------------------------------------------------------------
 
-state 1013 contains 1 shift/reduce conflicts.
+state 1019 contains 1 shift/reduce conflicts.
 
         transformqual -> 'then' 'group' . 'using' exp
         transformqual -> 'then' 'group' . 'by' exp 'using' exp
@@ -323,7 +323,7 @@ state 1013 contains 1 shift/reduce conflicts.
 
 -------------------------------------------------------------------------------
 
-state 1390 contains 1 shift/reduce conflict.
+state 1404 contains 1 shift/reduce conflict.
 
     *** atype -> tyvar .
         tv_bndr -> '(' tyvar . '::' kind ')'
