@@ -4620,6 +4620,9 @@ It is particularly galling that, since the constructor doesn't appear at
 run-time, this instance declaration defines a dictionary which is
 *wholly equivalent* to the ``Int`` dictionary, only slower!
 
+:extension:`DerivingVia` (see :ref:`deriving-via`) is a generalization of
+this idea.
+
 .. _generalized-newtype-deriving:
 
 Generalising the deriving clause
@@ -4910,6 +4913,11 @@ isn't sophisticated enough to determine this, so you'll need to enable
 you do go down this route, make sure you can convince yourself that all of
 the type family instances you're deriving will eventually terminate if used!
 
+Note that :extension:`DerivingVia` (see :ref:`deriving-via`) uses essentially
+the same specification to derive instances of associated type families as well
+(except that it uses the ``via`` type instead of the underlying ``rep-type``
+of a newtype).
+
 .. _derive-any-class:
 
 Deriving any other class
@@ -5113,10 +5121,12 @@ Currently, the deriving strategies are:
 - ``stock``: Have GHC implement a "standard" instance for a data type,
   if possible (e.g., ``Eq``, ``Ord``, ``Generic``, ``Data``, ``Functor``, etc.)
 
-- ``anyclass``: Use :extension:`DeriveAnyClass`
+- ``anyclass``: Use :extension:`DeriveAnyClass` (see :ref:`derive-any-class`)
 
 - ``newtype``: Use :extension:`GeneralizedNewtypeDeriving`
+               (see :ref:`newtype-deriving`)
 
+- ``via``: Use :extension:`DerivingVia` (see :ref:`deriving-via`)
 
 .. _default-deriving-strategy:
 
@@ -5156,20 +5166,22 @@ Deriving via
 ------------
 
 .. extension:: DerivingVia
-    :shortdesc: Enable deriving instances ``via`` types of the same runtime representation.
+    :shortdesc: Enable deriving instances ``via`` types of the same runtime
+        representation.
         Implies :extension:`DerivingStrategies`.
 
     :implies: :extension:`DerivingStrategies`
 
-    :since: 8.4.1
+    :since: 8.6.1
 
-    This allows ``deriving`` a class instance for a type by specifying
+This allows ``deriving`` a class instance for a type by specifying
 another type of equal runtime representation (such that there exists a
 ``Coercible`` instance between the two: see :ref:`coercible`) that is
 already an instance of the that class.
 
-:extension:`DerivingVia` is indicated by ``deriving`` ⟨class⟩ ``via``
-⟨other type⟩: ::
+:extension:`DerivingVia` is indicated by the use of the ``via``
+deriving strategy. ``via`` requires specifying another type (the ``via`` type)
+to ``coerce`` through. For example, this code: ::
 
     {-# LANGUAGE DerivingVia #-}
 
@@ -5189,7 +5201,7 @@ already an instance of the that class.
     euroSign :: Unicode
     euroSign = U 0x20ac
 
-generating the instance ::
+Generates the following instance ::
 
     instance Show Unicode where
       show :: Unicode -> String
@@ -5200,7 +5212,7 @@ generating the instance ::
 
 This extension generalizes :extension:`GeneralizedNewtypeDeriving`. To
 derive ``Num Unicode`` with GND (``deriving newtype Num``) it must
-reuse the ``Num Int`` instance — with ``DerivingVia`` we explicitly
+reuse the ``Num Int`` instance. With ``DerivingVia``, we can explicitly
 specify the representation type ``Int``: ::
 
     newtype Unicode = U Int
@@ -5214,16 +5226,17 @@ specify the representation type ``Int``: ::
     euroSign = 0x20ac
 
 Code duplication is common in instance declarations. A familiar
-pattern is lifting operations over an ``Applicative`` functor. Can we
-make that pattern into an instance? To lift ``Semigroup``, ``Monoid``
-would require instances of any applied type ``f a`` which overlaps
-with all other such instances: ::
+pattern is lifting operations over an ``Applicative`` functor.
+Instead of having catch-all instances for ``f a`` which overlap
+with all other such instances, like so: ::
 
     instance (Applicative f, Semigroup a) => Semigroup (f a) ..
     instance (Applicative f, Monoid    a) => Monoid    (f a) ..
 
-Instead we attach this boilerplate as an instance of a ``newtype App``
-(where ``App f a`` and ``f a`` are represented the same in memory) ::
+We can instead create a newtype ``App``
+(where ``App f a`` and ``f a`` are represented the same in memory)
+and use :extension:`DerivingVia` to explicitly enable uses of this
+pattern: ::
 
     {-# LANGUAGE DerivingVia, DeriveFunctor, GeneralizedNewtypeDeriving #-}
 
@@ -5249,22 +5262,16 @@ Instead we attach this boilerplate as an instance of a ``newtype App``
 
       MkPair f g <*> MkPair a b = MkPair (f a) (g b)
 
-Important to note: The ⟨other type⟩ following ``via`` does not have to
-be a ``newtype``, the only restriction is that it is coercible to the
-target type. This means there can be arbitrary nesting of ``newtypes``
-::
+Note that the ``via`` type does not have to be a ``newtype``.
+The only restriction is that it is coercible with the
+original data type. This means there can be arbitrary nesting of newtypes,
+as in the following example: ::
 
     newtype Kleisli m a b = (a -> m b)
       deriving (Semigroup, Monoid)
         via (a -> App m b)
 
-Here we make use of the ``Monoid ((->) a)`` instance. If that instance
-did not exist (or if the instance wasn't what we wanted) we can
-override it with a second ``App`` ::
-
-    newtype Kleisli m a b = (a -> m b)
-      deriving (Semigroup, Monoid)
-        via (App ((->) a) (App m b))
+Here we make use of the ``Monoid ((->) a)`` instance.
 
 .. _pattern-synonyms:
 
@@ -9201,7 +9208,7 @@ variables. These variables may depend on each other, even in the same
 the body of the ``forall``. Here are some examples::
 
   data Proxy k (a :: k) = MkProxy   -- just to use below
-  
+
   f :: forall k a. Proxy k a        -- This is just fine. We see that (a :: k).
   f = undefined
 
@@ -15427,7 +15434,7 @@ Roles
    single: roles
 
 Using :extension:`GeneralizedNewtypeDeriving`
-(:ref:`generalized-newtype-deriving`), a programmer can take existing
+(:ref:`newtype-deriving`), a programmer can take existing
 instances of classes and "lift" these into instances of that class for a
 newtype. However, this is not always safe. For example, consider the
 following:
