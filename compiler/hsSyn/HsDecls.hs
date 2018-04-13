@@ -1747,7 +1747,7 @@ instance Outputable a => Outputable (DerivStrategy' a) where
     ppr StockStrategy    = text "stock"
     ppr AnyclassStrategy = text "anyclass"
     ppr NewtypeStrategy  = text "newtype"
-    ppr (ViaStrategy ty) = text "via" <+> parens (ppr ty)
+    ppr (ViaStrategy ty) = text "via" <+> ppr ty
 
 -- | A short description of a @DerivStrategy'@.
 derivStrategyName :: DerivStrategy' a -> SDoc
