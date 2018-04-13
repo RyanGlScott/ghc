@@ -1921,8 +1921,7 @@ genDerivStuff mechanism loc clas tycon inst_tys tyvars
       -- Try a stock deriver
       DerivSpecStock gen_fn -> gen_fn loc tycon inst_tys
 
-      -- If there isn't a stock deriver, our last resort is -XDeriveAnyClass
-      -- (since -XGeneralizedNewtypeDeriving fell through).
+      -- Try DeriveAnyClass
       DerivSpecAnyClass -> do
         let mini_env   = mkVarEnv (classTyVars clas `zip` inst_tys)
             mini_subst = mkTvSubst (mkInScopeSet (mkVarSet tyvars)) mini_env
@@ -1941,7 +1940,7 @@ genDerivStuff mechanism loc clas tycon inst_tys tyvars
                -- See Note [DeriveAnyClass and default family instances]
                , [] )
 
-      -- TODO: Documentation
+      -- Try DerivingVia
       DerivSpecVia via_ty -> gen_newtype_or_via via_ty
   where
     gen_newtype_or_via ty = do
@@ -1950,8 +1949,7 @@ genDerivStuff mechanism loc clas tycon inst_tys tyvars
 
     unusedConName :: Maybe Name
     unusedConName
-      | isDerivSpecNewtype mechanism -- TODO: Is this needed for deriving via too?
-                                     -- Hard to say at the moment
+      | isDerivSpecNewtype mechanism
         -- See Note [Newtype deriving and unused constructors]
       = Just $ getName $ head $ tyConDataCons tycon
       | otherwise
@@ -2117,8 +2115,6 @@ derivingKindErr tc cls cls_tys cls_kind enough_args
                     = text "(Perhaps you intended to use PolyKinds)"
                     | otherwise = Outputable.empty
 
--- TODO: Perhaps we should rename derivingKindErr now that we have multiple
--- ways to trigger kind errors when deriving
 derivingViaKindErr :: Class -> Kind -> Type -> Kind -> MsgDoc
 derivingViaKindErr cls cls_kind via_ty via_kind
   = hang (text "Cannot derive instance via" <+> quotes (pprType via_ty))

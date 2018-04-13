@@ -1,5 +1,9 @@
 # Changelog for [`template-haskell` package](http://hackage.haskell.org/package/template-haskell)
 
+## 2.14.0.0 *TBA*
+
+  * Add a `ViaStrategy` constructor to `DerivStrategy`.
+
 ## 2.13.0.0 *TBA*
 
   * Bundled with GHC *TBA*
@@ -21,8 +25,6 @@
     implementation `qRunIO = liftIO`
 
   * Add `MonadIO Q` instance
-
-  * Add support for `deriving via` TODO
 
 ## 2.12.0.0 *July 2017*
 

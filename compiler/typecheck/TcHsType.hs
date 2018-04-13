@@ -287,12 +287,27 @@ tcHsDeriv hs_ty
            Just (cls, tys) -> return (tvs, (cls, tys, args))
            Nothing -> failWithTc (text "Illegal deriving item" <+> quotes (ppr hs_ty)) }
 
--- TODO RGS: Seriously, explain this.
-tcDerivStrategy :: forall a.
-                   UserTypeCtxt
-                -> Maybe (DerivStrategy GhcRn)
-                -> TcM ([TyVar], a)
-                -> TcM (Maybe DerivStrategyPostTc, [TyVar], a)
+-- | Typecheck something within the context of a deriving strategy.
+-- This is of particular importance when the deriving strategy is @via@.
+-- For instance:
+--
+-- @
+-- deriving via (S a) instance C (T a)
+-- @
+--
+-- We need to typecheck @S a@, and moreover, we need to extend the tyvar
+-- environment with @a@ before typechecking @C (T a)@, since @S a@ quantified
+-- the type variable @a@.
+tcDerivStrategy
+  :: forall a.
+     UserTypeCtxt
+  -> Maybe (DerivStrategy GhcRn) -- ^ The deriving strategy
+  -> TcM ([TyVar], a) -- ^ The thing to typecheck within the context of the
+                      -- deriving strategy, which might quantify some type
+                      -- variables of its own.
+  -> TcM (Maybe DerivStrategyPostTc, [TyVar], a)
+     -- ^ The typechecked deriving strategy, all quantified tyvars, and
+     -- the payload of the typechecked thing.
 tcDerivStrategy user_ctxt mds thing_inside
   = case mds of
       Nothing -> boring_case Nothing

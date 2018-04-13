@@ -1710,13 +1710,14 @@ rnLDerivStrategy doc mds thing_inside
       (thing, fvs) <- thing_inside [] empty
       pure (mds, thing, fvs)
 
--- TODO RGS: What is going on here?
+-- | Errors if a @via@ type binds any floating type variables.
+-- See @Note [Floating `via` type variables]@
 rnAndReportFloatingViaTvs
   :: forall a. Outputable a
-  => [Name] -> SrcSpan -> SDoc
-     -- TODO RGS: What are these first three arguments? Also, mention that
-     -- they're only used for error message purposes.
-  -> RnM (a, FreeVars)
+  => [Name]  -- ^ The bound type variables from a @via@ type.
+  -> SrcSpan -- ^ The source span (for error reporting only).
+  -> SDoc    -- ^ The pretty-printed @via@ type (for error reporting only).
+  -> RnM (a, FreeVars) -- ^ The thing the @via@ type scopes over.
   -> RnM (a, FreeVars)
 rnAndReportFloatingViaTvs tv_names loc ppr_via_ty thing_inside
   = do (thing, thing_fvs) <- thing_inside
@@ -1729,9 +1730,32 @@ rnAndReportFloatingViaTvs tv_names loc ppr_via_ty thing_inside
           [ text "Type variable" <+> quotes (ppr tv_name) <+>
             text "is bound in the" <+> quotes (text "via") <+>
             text "type" <+> quotes ppr_via_ty
-            -- TODO RGS: Should we say _where_ it needs to be mentioned?
           , text "but is not mentioned in" <+> quotes (ppr thing) <>
             text ", which is illegal" ]
+
+{-
+Note [Floating `via` type variables]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Imagine the following `deriving via` clause:
+
+    data Quux
+      deriving Eq via (Const a Quux)
+
+This should be rejected. Why? Because it would generate the following instance:
+
+    instance Eq Quux where
+      (==) = coerce @(Quux         -> Quux         -> Bool)
+                    @(Const a Quux -> Const a Quux -> Bool)
+                    (==)
+
+This instance is ill-formed, as the `a` in `Const a Quux` is unbound. The
+problem is that `a` is never used anywhere in the derived class `Eq`. Since
+`a` is bound but has no use sites, we refer to it as "floating".
+
+We use the rnAndReportFloatingViaTvs function to check that any type renamed
+within the context of the `via` deriving strategy actually uses all bound
+`via` type variables, and if it doesn't, it throws an error.
+-}
 
 badGadtStupidTheta :: HsDocContext -> SDoc
 badGadtStupidTheta _

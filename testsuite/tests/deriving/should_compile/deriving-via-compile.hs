@@ -402,6 +402,7 @@ instance Applicative f => Additive (WrapApplicative f) where
   zero   = pure 0
   liftU2 = liftA2
 
+deriving via (WrapApplicative ((->) a)) instance Additive ((->) a)
 deriving via (WrapApplicative Complex)  instance Additive Complex
 deriving via (WrapApplicative Identity) instance Additive Identity
 
@@ -430,10 +431,8 @@ instance Additive f => Affine (WrapAdditive f) where
   WrappedAdditive a .+^ b = WrappedAdditive (a ^+^ b)
   WrappedAdditive a .-^ b = WrappedAdditive (a ^-^ b)
 
--- TODO:
 -- ADDITIVE(((->) a))
--- deriving via (WrapAdditive ((->) a)) instance Affine ((->) a)
-
+deriving via (WrapAdditive ((->) a)) instance Affine ((->) a)
 -- ADDITIVE([])
 deriving via (WrapAdditive [])       instance Affine []
 -- ADDITIVE(Complex)

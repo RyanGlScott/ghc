@@ -1739,8 +1739,7 @@ data DerivStrategy' a
                      --   etc.)
   | AnyclassStrategy -- ^ @-XDeriveAnyClass@
   | NewtypeStrategy  -- ^ @-XGeneralizedNewtypeDeriving@
-  | ViaStrategy a -- ^ @deriving via@
-                  -- TODO: More documentation
+  | ViaStrategy a    -- ^ @-XDerivingVia@
   deriving (Eq, Data)
 
 instance Outputable a => Outputable (DerivStrategy' a) where

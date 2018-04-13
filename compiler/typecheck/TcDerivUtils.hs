@@ -225,8 +225,8 @@ data DerivSpecMechanism
 
   | DerivSpecAnyClass -- -XDeriveAnyClass
 
-  | DerivSpecVia -- deriving via TODO Documentation
-      Type
+  | DerivSpecVia -- -XDerivingVia
+      Type -- The @via@ type
 
 -- | Convert a 'DerivSpecMechanism' to its corresponding 'DerivStrategyPostTc'.
 derivSpecMechanismToStrategy :: DerivSpecMechanism -> DerivStrategyPostTc
