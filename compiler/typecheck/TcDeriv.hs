@@ -1291,6 +1291,9 @@ mk_coerce_based_eqn mk_mechanism coerced_ty
        lift $ traceTc "newtype deriving:" $
          ppr tycon <+> ppr (rep_tys coerced_ty) <+> ppr inferred_thetas
        let mechanism = mk_mechanism coerced_ty
+           bale_out msg = do err <- derivingThingErrMechanism mechanism msg
+                             lift $ failWithTc err
+       atf_coerce_based_error_checks cls bale_out
        doDerivInstErrorChecks1 mechanism
        dfun_name <- lift $ newDFunName' cls tycon
        loc       <- lift getSrcSpanM
@@ -1313,6 +1316,60 @@ mk_coerce_based_eqn mk_mechanism coerced_ty
             , ds_overlap = overlap_mode
             , ds_standalone_wildcard = wildcard
             , ds_mechanism = mechanism }
+
+-- Ensure that a class's associated type variables are suitable for
+-- GeneralizedNewtypeDeriving or DerivingVia.
+--
+-- See Note [GND and associated type families]
+atf_coerce_based_error_checks
+  :: Class
+  -> (SDoc -> DerivM ())
+  -> DerivM ()
+atf_coerce_based_error_checks cls bale_out
+  = let cls_tyvars = classTyVars cls
+
+        ats_look_sensible
+           =  -- Check (a) from Note [GND and associated type families]
+              no_adfs
+              -- Check (b) from Note [GND and associated type families]
+           && isNothing at_without_last_cls_tv
+              -- Check (d) from Note [GND and associated type families]
+           && isNothing at_last_cls_tv_in_kinds
+
+        (adf_tcs, atf_tcs) = partition isDataFamilyTyCon at_tcs
+        no_adfs            = null adf_tcs
+               -- We cannot newtype-derive data family instances
+
+        at_without_last_cls_tv
+          = find (\tc -> last_cls_tv `notElem` tyConTyVars tc) atf_tcs
+        at_last_cls_tv_in_kinds
+          = find (\tc -> any (at_last_cls_tv_in_kind . tyVarKind)
+                             (tyConTyVars tc)
+                      || at_last_cls_tv_in_kind (tyConResKind tc)) atf_tcs
+        at_last_cls_tv_in_kind kind
+          = last_cls_tv `elemVarSet` exactTyCoVarsOfType kind
+        at_tcs = classATs cls
+        last_cls_tv = ASSERT( notNull cls_tyvars )
+                      last cls_tyvars
+
+        cant_derive_err
+           = vcat [ ppUnless no_adfs adfs_msg
+                  , maybe empty at_without_last_cls_tv_msg
+                          at_without_last_cls_tv
+                  , maybe empty at_last_cls_tv_in_kinds_msg
+                          at_last_cls_tv_in_kinds
+                  ]
+        adfs_msg  = text "the class has associated data types"
+        at_without_last_cls_tv_msg at_tc = hang
+          (text "the associated type" <+> quotes (ppr at_tc)
+           <+> text "is not parameterized over the last type variable")
+          2 (text "of the class" <+> quotes (ppr cls))
+        at_last_cls_tv_in_kinds_msg at_tc = hang
+          (text "the associated type" <+> quotes (ppr at_tc)
+           <+> text "contains the last type variable")
+         2 (text "of the class" <+> quotes (ppr cls)
+           <+> text "in a kind, which is not (yet) allowed")
+    in unless ats_look_sensible $ bale_out cant_derive_err
 
 mk_eqn_stock :: (DerivSpecMechanism -> DerivM EarlyDerivSpec)
              -> (SDoc -> DerivM EarlyDerivSpec)
@@ -1455,26 +1512,15 @@ mkNewTypeEqn
            -- We want the Num instance of B, *not* the Num instance of Int,
            -- when making the Num instance of A!
            rep_inst_ty = newTyConInstRhs rep_tycon rep_tc_args
-           cls_tyvars = classTyVars cls
 
            -------------------------------------------------------------------
            --  Figuring out whether we can only do this newtype-deriving thing
 
            -- See Note [Determining whether newtype-deriving is appropriate]
-           might_derive_via_coercible
+           might_be_newtype_derivable
               =  not (non_coercible_class cls)
-              && coercion_looks_sensible
+              && eta_ok
 --            && not (isRecursiveTyCon tycon)      -- Note [Recursive newtypes]
-           coercion_looks_sensible
-              =  eta_ok
-              && ats_look_sensible
-           ats_look_sensible
-              =  -- Check (a) from Note [GND and associated type families]
-                 no_adfs
-                 -- Check (b) from Note [GND and associated type families]
-              && isNothing at_without_last_cls_tv
-                 -- Check (d) from Note [GND and associated type families]
-              && isNothing at_last_cls_tv_in_kinds
 
            -- Check that eta reduction is OK
            eta_ok = rep_tc_args `lengthAtLeast` nt_eta_arity
@@ -1485,41 +1531,8 @@ mkNewTypeEqn
              --     And the [a] must not mention 'b'.  That's all handled
              --     by nt_eta_rity.
 
-           (adf_tcs, atf_tcs) = partition isDataFamilyTyCon at_tcs
-           no_adfs            = null adf_tcs
-                  -- We cannot newtype-derive data family instances
-
-           at_without_last_cls_tv
-             = find (\tc -> last_cls_tv `notElem` tyConTyVars tc) atf_tcs
-           at_last_cls_tv_in_kinds
-             = find (\tc -> any (at_last_cls_tv_in_kind . tyVarKind)
-                                (tyConTyVars tc)
-                         || at_last_cls_tv_in_kind (tyConResKind tc)) atf_tcs
-           at_last_cls_tv_in_kind kind
-             = last_cls_tv `elemVarSet` exactTyCoVarsOfType kind
-           at_tcs = classATs cls
-           last_cls_tv = ASSERT( notNull cls_tyvars )
-                         last cls_tyvars
-
-           cant_derive_err
-              = vcat [ ppUnless eta_ok  eta_msg
-                     , ppUnless no_adfs adfs_msg
-                     , maybe empty at_without_last_cls_tv_msg
-                             at_without_last_cls_tv
-                     , maybe empty at_last_cls_tv_in_kinds_msg
-                             at_last_cls_tv_in_kinds
-                     ]
-           eta_msg   = text "cannot eta-reduce the representation type enough"
-           adfs_msg  = text "the class has associated data types"
-           at_without_last_cls_tv_msg at_tc = hang
-             (text "the associated type" <+> quotes (ppr at_tc)
-              <+> text "is not parameterized over the last type variable")
-             2 (text "of the class" <+> quotes (ppr cls))
-           at_last_cls_tv_in_kinds_msg at_tc = hang
-             (text "the associated type" <+> quotes (ppr at_tc)
-              <+> text "contains the last type variable")
-            2 (text "of the class" <+> quotes (ppr cls)
-              <+> text "in a kind, which is not (yet) allowed")
+           cant_derive_err = ppUnless eta_ok  eta_msg
+           eta_msg = text "cannot eta-reduce the representation type enough"
 
        MASSERT( cls_tys `lengthIs` (classArity cls - 1) )
        case mb_strat of
@@ -1532,18 +1545,16 @@ mkNewTypeEqn
            -- coercions (e.g., Traversable), since we can just derive the
            -- instance and let it error if need be.
            -- See Note [Determining whether newtype-deriving is appropriate]
-           if coercion_looks_sensible && newtype_deriving
+           if eta_ok && newtype_deriving
              then mk_eqn_newtype rep_inst_ty
              else bale_out (cant_derive_err $$
                             if newtype_deriving then empty else suggest_gnd)
          Just (ViaStrategy via_ty) ->
            -- NB: For DerivingVia, we don't need to any eta-reduction checking,
            -- since the @via@ type is already "eta-reduced".
-           if ats_look_sensible
-              then mk_eqn_via via_ty
-              else bale_out cant_derive_err
+           mk_eqn_via via_ty
          Nothing
-           | might_derive_via_coercible
+           | might_be_newtype_derivable
              && ((newtype_deriving && not deriveAnyClass)
                   || std_class_via_coercible cls)
           -> mk_eqn_newtype rep_inst_ty
@@ -1560,10 +1571,10 @@ mkNewTypeEqn
                  --
                  -- and the previous cases won't catch it. This fixes the bug
                  -- reported in Trac #10598.
-                 | might_derive_via_coercible && newtype_deriving
+                 | might_be_newtype_derivable && newtype_deriving
                 -> mk_eqn_newtype rep_inst_ty
                  -- Otherwise, throw an error for a stock class
-                 | might_derive_via_coercible && not newtype_deriving
+                 | might_be_newtype_derivable && not newtype_deriving
                 -> bale_out (msg $$ suggest_gnd)
                  | otherwise
                 -> bale_out msg
