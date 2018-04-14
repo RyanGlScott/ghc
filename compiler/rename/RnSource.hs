@@ -1673,8 +1673,12 @@ rnLHsDerivingClause doc
       rnHsSigType doc deriv_ty
 
 rnLDerivStrategy :: forall a.
-                    HsDocContext -> Maybe (LDerivStrategy GhcPs)
-                 -> ([Name] -> SDoc -> RnM (a, FreeVars))
+                    HsDocContext
+                 -> Maybe (LDerivStrategy GhcPs)
+                 -> ([Name]   -- The tyvars bound by the via type
+                      -> SDoc -- The pretty-printed via type (used for
+                              -- error message reporting)
+                      -> RnM (a, FreeVars))
                  -> RnM (Maybe (LDerivStrategy GhcRn), a, FreeVars)
 rnLDerivStrategy doc mds thing_inside
   = case mds of
@@ -1699,10 +1703,16 @@ rnLDerivStrategy doc mds thing_inside
         StockStrategy    -> boring_case (L loc StockStrategy)
         AnyclassStrategy -> boring_case (L loc AnyclassStrategy)
         NewtypeStrategy  -> boring_case (L loc NewtypeStrategy)
-        ViaStrategy ty   ->
-          do (ty', thing, fvs) <- rnHsSigTypeAndThen doc ty $ \strat_tvs ->
-                                  thing_inside strat_tvs (ppr ty)
-             pure (L loc (ViaStrategy ty'), thing, fvs)
+        ViaStrategy via_ty ->
+          do (via_ty', fvs1) <- rnHsSigType doc via_ty
+             let HsIB { hsib_vars = via_imp_tvs
+                      , hsib_body = via_body } = via_ty'
+                 (via_exp_tv_bndrs, _, _) = splitLHsSigmaTy via_body
+                 via_exp_tvs = map hsLTyVarName via_exp_tv_bndrs
+                 via_tvs = via_imp_tvs ++ via_exp_tvs
+             (thing, fvs2) <- extendTyVarEnvFVRn via_tvs $
+                              thing_inside via_tvs (ppr via_ty')
+             pure (L loc (ViaStrategy via_ty'), thing, fvs1 `plusFV` fvs2)
 
     boring_case :: mds
                 -> RnM (mds, a, FreeVars)

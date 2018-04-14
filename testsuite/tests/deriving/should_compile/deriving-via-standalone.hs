@@ -1,7 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 module DerivingViaStandalone where
 
@@ -26,3 +29,13 @@ instance C Proxy
 
 newtype MyProxy a = MyProxy (Proxy a)
 deriving via (Proxy :: * -> *) instance C MyProxy
+
+class Z a b
+data T a
+data X1 a
+data X2 a
+data X3 a
+
+deriving via (forall a. T a) instance           Z a (X1 b)
+deriving via           (T a) instance forall b. Z a (X2 b)
+deriving via (forall a. T a) instance forall b. Z a (X3 b)
