@@ -46,8 +46,7 @@ module HsDecls (
   -- ** Standalone deriving declarations
   DerivDecl(..), LDerivDecl,
   -- ** Deriving strategies
-  DerivStrategy'(..), LDerivStrategy, DerivStrategy,
-  LDerivStrategyPostTc, DerivStrategyPostTc, derivStrategyName,
+  DerivStrategy(..), LDerivStrategy, derivStrategyName,
   -- ** @RULE@ declarations
   LRuleDecls,RuleDecls(..),RuleDecl(..), LRuleDecl, HsRuleRn(..),
   RuleBndr(..),LRuleBndr,
@@ -1744,8 +1743,8 @@ instance (p ~ GhcPass pass, OutputableBndrId p)
                                              <+> ppr inst_ty
     ppr (XClsInstDecl x) = ppr x
 
-ppDerivStrategy :: OutputableBndrId (GhcPass pass)
-                => Maybe (LDerivStrategy (GhcPass pass)) -> SDoc
+ppDerivStrategy :: (p ~ GhcPass pass, OutputableBndrId p)
+                => Maybe (LDerivStrategy p) -> SDoc
 ppDerivStrategy mb =
   case mb of
     Nothing       -> empty
@@ -1846,16 +1845,9 @@ instance (p ~ GhcPass pass, OutputableBndrId p)
 
 -- | A 'Located' 'DerivStrategy'.
 type LDerivStrategy pass = Located (DerivStrategy pass)
--- | A `DerivStrategy'`, pre-typechecking.
-type DerivStrategy pass = DerivStrategy' (LHsSigType pass)
-
--- | A 'Located' 'DerivStrategyPostTc'.
-type LDerivStrategyPostTc = Located DerivStrategyPostTc
--- | A `DerivStrategy'`, post-typechecking.
-type DerivStrategyPostTc = DerivStrategy' Type
 
 -- | Which technique the user explicitly requested when deriving an instance.
-data DerivStrategy' a
+data DerivStrategy pass
   -- See Note [Deriving strategies] in TcDeriv
   = StockStrategy    -- ^ GHC's \"standard\" strategy, which is to implement a
                      --   custom instance for the data type. This only works
@@ -1864,17 +1856,22 @@ data DerivStrategy' a
                      --   etc.)
   | AnyclassStrategy -- ^ @-XDeriveAnyClass@
   | NewtypeStrategy  -- ^ @-XGeneralizedNewtypeDeriving@
-  | ViaStrategy a    -- ^ @-XDerivingVia@
-  deriving (Eq, Data)
+  | ViaStrategy (XViaStrategy pass)
+                     -- ^ @-XDerivingVia@
 
-instance Outputable a => Outputable (DerivStrategy' a) where
+type instance XViaStrategy GhcPs = LHsSigType GhcPs
+type instance XViaStrategy GhcRn = LHsSigType GhcRn
+type instance XViaStrategy GhcTc = Type
+
+instance (p ~ GhcPass pass, OutputableBndrId p)
+        => Outputable (DerivStrategy p) where
     ppr StockStrategy    = text "stock"
     ppr AnyclassStrategy = text "anyclass"
     ppr NewtypeStrategy  = text "newtype"
     ppr (ViaStrategy ty) = text "via" <+> ppr ty
 
 -- | A short description of a @DerivStrategy'@.
-derivStrategyName :: DerivStrategy' a -> SDoc
+derivStrategyName :: DerivStrategy a -> SDoc
 derivStrategyName = text . go
   where
     go StockStrategy    = "stock"

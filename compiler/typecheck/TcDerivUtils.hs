@@ -115,7 +115,7 @@ data DerivEnv = DerivEnv
     --   'InferContext' for @deriving@ clauses, or for standalone deriving that
     --   uses a wildcard constraint.
     --   See @Note [Inferring the instance context]@.
-  , denv_strat        :: Maybe DerivStrategyPostTc
+  , denv_strat        :: Maybe (DerivStrategy GhcTc)
     -- ^ 'Just' if user requests a particular deriving strategy.
     --   Otherwise, 'Nothing'.
   }
@@ -228,8 +228,8 @@ data DerivSpecMechanism
   | DerivSpecVia -- -XDerivingVia
       Type -- The @via@ type
 
--- | Convert a 'DerivSpecMechanism' to its corresponding 'DerivStrategyPostTc'.
-derivSpecMechanismToStrategy :: DerivSpecMechanism -> DerivStrategyPostTc
+-- | Convert a 'DerivSpecMechanism' to its corresponding 'DerivStrategy'.
+derivSpecMechanismToStrategy :: DerivSpecMechanism -> DerivStrategy GhcTc
 derivSpecMechanismToStrategy DerivSpecStock{}   = StockStrategy
 derivSpecMechanismToStrategy DerivSpecNewtype{} = NewtypeStrategy
 derivSpecMechanismToStrategy DerivSpecAnyClass  = AnyclassStrategy

@@ -1067,7 +1067,7 @@ mkEqnHelp :: Maybe OverlapMode
                -- SupplyContext => context supplied (standalone deriving)
                -- InferContext  => context inferred (deriving on data decl, or
                --                  standalone deriving decl with a wildcard)
-          -> Maybe DerivStrategyPostTc
+          -> Maybe (DerivStrategy GhcTc)
           -> TcRn EarlyDerivSpec
 -- Make the EarlyDerivSpec for an instance
 --      forall tvs. theta => cls (tys ++ [ty])
@@ -2149,7 +2149,7 @@ derivingEtaErr cls cls_tys inst_ty
                 <+> pprClassPred cls (cls_tys ++ [inst_ty]))]
 
 derivingThingErr :: Bool -> Class -> [Type] -> Type
-                 -> Maybe DerivStrategyPostTc -> MsgDoc -> MsgDoc
+                 -> Maybe (DerivStrategy GhcTc) -> MsgDoc -> MsgDoc
 derivingThingErr newtype_deriving cls cls_tys inst_ty mb_strat why
   = derivingThingErr' newtype_deriving cls cls_tys inst_ty mb_strat
                       (maybe empty derivStrategyName mb_strat) why
@@ -2177,7 +2177,7 @@ derivingThingErrMechanism mechanism why
                 why
 
 derivingThingErr' :: Bool -> Class -> [Type] -> Type
-                  -> Maybe DerivStrategyPostTc -> MsgDoc -> MsgDoc -> MsgDoc
+                  -> Maybe (DerivStrategy GhcTc) -> MsgDoc -> MsgDoc -> MsgDoc
 derivingThingErr' newtype_deriving cls cls_tys inst_ty mb_strat strat_msg why
   = sep [(hang (text "Can't make a derived instance of")
              2 (quotes (ppr pred) <+> via_mechanism)

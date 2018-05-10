@@ -309,7 +309,7 @@ tcDerivStrategy
   -> TcM ([TyVar], a) -- ^ The thing to typecheck within the context of the
                       -- deriving strategy, which might quantify some type
                       -- variables of its own.
-  -> TcM (Maybe DerivStrategyPostTc, [TyVar], a)
+  -> TcM (Maybe (DerivStrategy GhcTc), [TyVar], a)
      -- ^ The typechecked deriving strategy, all quantified tyvars, and
      -- the payload of the typechecked thing.
 tcDerivStrategy user_ctxt mds thing_inside
@@ -319,7 +319,7 @@ tcDerivStrategy user_ctxt mds thing_inside
                     pure (Just ds', tvs, thing)
   where
     tc_deriv_strategy :: DerivStrategy GhcRn
-                      -> TcM (DerivStrategyPostTc, [TyVar], a)
+                      -> TcM (DerivStrategy GhcTc, [TyVar], a)
     tc_deriv_strategy StockStrategy    = boring_case StockStrategy
     tc_deriv_strategy AnyclassStrategy = boring_case AnyclassStrategy
     tc_deriv_strategy NewtypeStrategy  = boring_case NewtypeStrategy
