@@ -1773,6 +1773,12 @@ unpackedness :: { Located ([AddAnn], SourceText, SrcUnpackedness) }
         : '{-# UNPACK' '#-}'   { sLL $1 $> ([mo $1, mc $2], getUNPACK_PRAGs $1, SrcUnpack) }
         | '{-# NOUNPACK' '#-}' { sLL $1 $> ([mo $1, mc $2], getNOUNPACK_PRAGs $1, SrcNoUnpack) }
 
+-- TODO RGS: Delete this
+ktypedoc :: { LHsType GhcPs }
+         : ctypedoc            { $1 }
+         | ctypedoc '::' kind  {% ams (sLL $1 $> $ HsKindSig noExt $1 $3)
+                                      [mu AnnDcolon $2] }
+
 -- A ctype is a for-all type
 ctype   :: { LHsType GhcPs }
         : 'forall' tv_bndrs '.' ctype   {% hintExplicitForall (getLoc $1) >>
@@ -1979,9 +1985,9 @@ inst_type :: { LHsSigType GhcPs }
         : sigtype                       { mkLHsSigType $1 }
 
 deriv_types :: { [LHsSigType GhcPs] }
-        : typedoc                       { [mkLHsSigType $1] }
+        : ktypedoc                      { [mkLHsSigType $1] }
 
-        | typedoc ',' deriv_types       {% addAnnotation (gl $1) AnnComma (gl $2)
+        | ktypedoc ',' deriv_types      {% addAnnotation (gl $1) AnnComma (gl $2)
                                            >> return (mkLHsSigType $1 : $3) }
 
 comma_types0  :: { [LHsType GhcPs] }  -- Zero or more:  ty,ty,ty
